@@ -115,9 +115,11 @@ export const AuthProvider = ({ children }) => {
   };
 
   const logout = () => {
-    if (MODE === "development") {
-      Cookies.remove("uid", { path: "/" });
+    if(!confirm("Do you want to logout?")){
+      return
     }
+    Cookies.remove("uid", { path: "/" });
+  
     setUser(null);
   };
 

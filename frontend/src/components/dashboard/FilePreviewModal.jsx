@@ -1,9 +1,11 @@
-import { useEffect, useMemo } from "react";
+import { useEffect } from "react";
 import { X, Download, FileText } from "lucide-react";
 
-const FilePreviewModal = ({ file, onClose }) => {
-  const url = useMemo(() => URL.createObjectURL(file), [file]);
-  const isImage = file.type.startsWith("image/");
+const FilePreviewModal = ({ file, backendUrl, onClose }) => {
+  // file is now a document object from the DB: { id, file_url, original_filename, expiry_date, ... }
+  const url = `${backendUrl}${file.file_url}`;
+  const name = file.original_filename || "file";
+  const isImage = /\.(jpe?g|png|webp|gif)$/i.test(name);
 
   // Close on Escape
   useEffect(() => {
@@ -13,9 +15,8 @@ const FilePreviewModal = ({ file, onClose }) => {
     window.addEventListener("keydown", handler);
     return () => {
       window.removeEventListener("keydown", handler);
-      URL.revokeObjectURL(url);
     };
-  }, [onClose, url]);
+  }, [onClose]);
 
   // Prevent body scroll
   useEffect(() => {
@@ -28,7 +29,8 @@ const FilePreviewModal = ({ file, onClose }) => {
   const handleDownload = () => {
     const link = document.createElement("a");
     link.href = url;
-    link.download = file.name;
+    link.download = name;
+    link.target = "_blank";
     link.click();
   };
 
@@ -51,11 +53,8 @@ const FilePreviewModal = ({ file, onClose }) => {
               <FileText size={16} className="text-accent-500" />
             )}
             <h3 className="text-sm font-semibold text-surface-800 truncate">
-              {file.name}
+              {name}
             </h3>
-            <span className="text-xs text-surface-400 flex-shrink-0">
-              ({(file.size / 1024).toFixed(1)} KB)
-            </span>
           </div>
 
           <div className="flex items-center gap-2 ml-4">
@@ -81,13 +80,13 @@ const FilePreviewModal = ({ file, onClose }) => {
           {isImage ? (
             <img
               src={url}
-              alt={file.name}
+              alt={name}
               className="max-w-full max-h-[70vh] object-contain rounded-lg"
             />
           ) : (
             <iframe
               src={url}
-              title={file.name}
+              title={name}
               className="w-full h-[70vh] rounded-lg border border-surface-200"
             />
           )}

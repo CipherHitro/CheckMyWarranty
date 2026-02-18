@@ -1,9 +1,13 @@
-import { useState, useRef, useCallback } from "react";
-import { Upload, X, FileText, Image, Eye, Trash2, Plus } from "lucide-react";
+import { useState, useRef, useCallback, useEffect } from "react";
+import { Upload, FileText, Image, Eye, Trash2, Plus, Calendar } from "lucide-react";
 import toast from "react-hot-toast";
 
 import Button from "../components/ui/Button";
+import Spinner from "../components/ui/Spinner";
 import FilePreviewModal from "../components/dashboard/FilePreviewModal";
+
+const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3000/api";
+const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || "http://localhost:3000";
 
 const ACCEPTED_TYPES = [
   "image/jpeg",
@@ -15,13 +19,55 @@ const ACCEPTED_TYPES = [
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
 
 const Dashboard = () => {
-  const [files, setFiles] = useState([]);
+  const [documents, setDocuments] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [uploading, setUploading] = useState(false);
   const [dragActive, setDragActive] = useState(false);
   const [previewFile, setPreviewFile] = useState(null);
   const fileInputRef = useRef(null);
 
+  // ── Fetch all documents from backend ──────────────────────────
+  const fetchDocuments = useCallback(async () => {
+    try {
+      const res = await fetch(`${API_URL}/data/getAll`, {
+        credentials: "include",
+      });
+      const data = await res.json();
+
+      if (!res.ok) throw new Error(data.message || "Failed to fetch documents");
+
+      setDocuments(data.documents);
+    } catch (err) {
+      console.error("Fetch error:", err);
+      toast.error(err.message || "Could not load documents");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  // Fetch on first render
+  useEffect(() => {
+    fetchDocuments();
+  }, [fetchDocuments]);
+
+  // ── Upload file to backend ────────────────────────────────────
+  const uploadFile = async (file) => {
+    const formData = new FormData();
+    formData.append("file", file);
+
+    const res = await fetch(`${API_URL}/data/upload`, {
+      method: "POST",
+      credentials: "include",
+      body: formData,
+    });
+
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || "Upload failed");
+    return data.document;
+  };
+
   const processFiles = useCallback(
-    (incoming) => {
+    async (incoming) => {
       const valid = [];
 
       for (const file of incoming) {
@@ -33,24 +79,61 @@ const Dashboard = () => {
           toast.error(`"${file.name}" exceeds 10 MB limit`);
           continue;
         }
-        // Avoid duplicates
-        if (files.some((f) => f.name === file.name && f.size === file.size)) {
-          toast.error(`"${file.name}" already added`);
+        if (
+          documents.some((d) => d.original_filename === file.name)
+        ) {
+          toast.error(`"${file.name}" already uploaded`);
           continue;
         }
         valid.push(file);
       }
 
-      if (valid.length) {
-        setFiles((prev) => [...prev, ...valid]);
-        console.log("Uploaded files:", valid.map((f) => ({ name: f.name, size: f.size, type: f.type })));
-        toast.success(`${valid.length} file(s) added`);
+      if (!valid.length) return;
+
+      setUploading(true);
+
+      for (const file of valid) {
+        try {
+          await uploadFile(file);
+          toast.success(`"${file.name}" uploaded`);
+        } catch (err) {
+          toast.error(`"${file.name}" — ${err.message}`);
+        }
       }
+
+      // Re-fetch all documents after uploads
+      await fetchDocuments();
+      setUploading(false);
     },
-    [files]
+    [documents, fetchDocuments]
   );
 
-  // Drag events
+  // ── Remove file via backend ───────────────────────────────────
+  const removeFile = async (documentId) => {
+
+    try {
+      if(!confirm("Do you really want to delete this file?")){
+        return
+      }
+      const res = await fetch(`${API_URL}/data/remove`, {
+        method: "DELETE",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ documentId }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || "Remove failed");
+
+      setDocuments((prev) => prev.filter((d) => d.id !== documentId));
+      toast.success("File removed");
+    } catch (err) {
+      console.error("Remove error:", err);
+      toast.error(err.message || "Could not remove file");
+    }
+  };
+
+  // ── Drag & drop events ────────────────────────────────────────
   const handleDrag = (e) => {
     e.preventDefault();
     e.stopPropagation();
@@ -71,17 +154,34 @@ const Dashboard = () => {
     if (e.target.files?.length) {
       processFiles([...e.target.files]);
     }
-    e.target.value = ""; // reset so same file can be re-selected
+    e.target.value = "";
   };
 
-  const removeFile = (index) => {
-    setFiles((prev) => prev.filter((_, i) => i !== index));
-    toast.success("File removed");
+  // ── Helpers ───────────────────────────────────────────────────
+  const getFullUrl = (fileUrl) => `${BACKEND_URL}${fileUrl}`;
+
+  const isImage = (doc) => {
+    const name = doc.original_filename?.toLowerCase() || "";
+    return /\.(jpe?g|png|webp|gif)$/i.test(name);
   };
 
-  const getFilePreviewUrl = (file) => URL.createObjectURL(file);
+  const formatDate = (dateStr) => {
+    if (!dateStr) return "—";
+    return new Date(dateStr).toLocaleDateString("en-IN", {
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+    });
+  };
 
-  const isImage = (file) => file.type.startsWith("image/");
+  // ── Loading state ─────────────────────────────────────────────
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-32">
+        <Spinner size={40} />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-8">
@@ -106,8 +206,9 @@ const Dashboard = () => {
               ? "border-primary-400 bg-primary-50/50"
               : "border-surface-300 bg-white/50 hover:border-primary-300 hover:bg-primary-50/30"
           }
+          ${uploading ? "pointer-events-none opacity-60" : ""}
         `}
-        onClick={() => fileInputRef.current?.click()}
+        onClick={() => !uploading && fileInputRef.current?.click()}
       >
         <input
           ref={fileInputRef}
@@ -119,18 +220,24 @@ const Dashboard = () => {
         />
 
         <div className="flex flex-col items-center gap-3">
-          <div
-            className={`p-4 rounded-2xl transition-colors ${
-              dragActive
-                ? "bg-primary-200/50 text-primary-600"
-                : "bg-surface-100 text-surface-400"
-            }`}
-          >
-            <Upload size={32} />
-          </div>
+          {uploading ? (
+            <Spinner size={32} />
+          ) : (
+            <div
+              className={`p-4 rounded-2xl transition-colors ${
+                dragActive
+                  ? "bg-primary-200/50 text-primary-600"
+                  : "bg-surface-100 text-surface-400"
+              }`}
+            >
+              <Upload size={32} />
+            </div>
+          )}
           <div>
             <p className="text-sm font-medium text-surface-700">
-              {dragActive
+              {uploading
+                ? "Uploading..."
+                : dragActive
                 ? "Drop files here"
                 : "Drag & drop files, or click to browse"}
             </p>
@@ -142,16 +249,17 @@ const Dashboard = () => {
       </div>
 
       {/* File grid */}
-      {files.length > 0 && (
+      {documents.length > 0 && (
         <div>
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-semibold text-surface-800">
-              Uploaded Files ({files.length})
+              Uploaded Files ({documents.length})
             </h2>
             <Button
               variant="secondary"
               size="sm"
               onClick={() => fileInputRef.current?.click()}
+              disabled={uploading}
             >
               <Plus size={14} />
               Add more
@@ -159,17 +267,17 @@ const Dashboard = () => {
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {files.map((file, index) => (
+            {documents.map((doc) => (
               <div
-                key={`${file.name}-${index}`}
+                key={doc.id}
                 className="group relative bg-white/70 backdrop-blur-sm rounded-xl border border-surface-200 overflow-hidden hover:shadow-md hover:shadow-primary-200/20 transition-all duration-200"
               >
                 {/* Preview thumbnail */}
                 <div className="relative h-44 bg-surface-50 flex items-center justify-center overflow-hidden">
-                  {isImage(file) ? (
+                  {isImage(doc) ? (
                     <img
-                      src={getFilePreviewUrl(file)}
-                      alt={file.name}
+                      src={getFullUrl(doc.file_url)}
+                      alt={doc.original_filename}
                       className="w-full h-full object-cover"
                     />
                   ) : (
@@ -184,7 +292,7 @@ const Dashboard = () => {
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
-                        setPreviewFile(file);
+                        setPreviewFile(doc);
                       }}
                       className="p-2 bg-white/90 rounded-xl text-surface-700 hover:bg-white transition-colors cursor-pointer"
                       title="Preview"
@@ -194,7 +302,7 @@ const Dashboard = () => {
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
-                        removeFile(index);
+                        removeFile(doc.id);
                       }}
                       className="p-2 bg-white/90 rounded-xl text-red-500 hover:bg-white transition-colors cursor-pointer"
                       title="Remove"
@@ -206,17 +314,18 @@ const Dashboard = () => {
 
                 {/* File info */}
                 <div className="px-4 py-3 flex items-center gap-2">
-                  {isImage(file) ? (
+                  {isImage(doc) ? (
                     <Image size={14} className="text-primary-500 shrink-0" />
                   ) : (
                     <FileText size={14} className="text-accent-500 shrink-0" />
                   )}
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-medium text-surface-700 truncate">
-                      {file.name}
+                      {doc.original_filename}
                     </p>
-                    <p className="text-xs text-surface-400">
-                      {(file.size / 1024).toFixed(1)} KB
+                    <p className="text-xs text-surface-400 flex items-center gap-1">
+                      <Calendar size={10} />
+                      Expires {formatDate(doc.expiry_date)}
                     </p>
                   </div>
                 </div>
@@ -227,7 +336,7 @@ const Dashboard = () => {
       )}
 
       {/* Empty state */}
-      {files.length === 0 && (
+      {documents.length === 0 && (
         <div className="text-center py-12">
           <div className="inline-flex p-4 rounded-2xl bg-surface-100 text-surface-300 mb-4">
             <Image size={40} />
@@ -242,6 +351,7 @@ const Dashboard = () => {
       {previewFile && (
         <FilePreviewModal
           file={previewFile}
+          backendUrl={BACKEND_URL}
           onClose={() => setPreviewFile(null)}
         />
       )}
