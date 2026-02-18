@@ -36,6 +36,50 @@ async function handleAddFile(req, res) {
                     console.log(
                         `[extract] Document ${document.id}: expiry_date updated to ${extracted.expiry_date}`
                     );
+
+                    // ── Create reminder in the DB ──
+                    try {
+                        const now = new Date();
+                        const expiryDate = new Date(extracted.expiry_date);
+
+                        if (expiryDate <= now) {
+                            // Expiry already passed — no reminder needed
+                            console.log(
+                                `[reminder] Document ${document.id}: expiry already passed — skipping reminder`
+                            );
+                        } else {
+                            const msPerDay = 24 * 60 * 60 * 1000;
+                            const daysRemaining = Math.ceil((expiryDate - now) / msPerDay);
+
+                            let remindAt;
+                            if (daysRemaining >= 7) {
+                                // Normal case — remind 7 days before
+                                remindAt = new Date(expiryDate);
+                                remindAt.setDate(remindAt.getDate() - 7);
+                            } else if (daysRemaining >= 3) {
+                                // Less than 7 days — skip straight to 3-day reminder
+                                remindAt = new Date(expiryDate);
+                                remindAt.setDate(remindAt.getDate() - 3);
+                            } else {
+                                // Less than 3 days — remind immediately
+                                remindAt = now;
+                            }
+
+                            await pool.query(
+                                `INSERT INTO reminders (user_id, document_id, remind_at)
+                                 VALUES ($1, $2, $3)`,
+                                [userId, document.id, remindAt]
+                            );
+                            console.log(
+                                `[reminder] Document ${document.id}: reminder created for ${remindAt.toISOString()} (${daysRemaining} days until expiry)`
+                            );
+                        }
+                    } catch (reminderErr) {
+                        console.error(
+                            `[reminder] Document ${document.id}: failed to create reminder —`,
+                            reminderErr.message
+                        );
+                    }
                 } else {
                     console.log(
                         `[extract] Document ${document.id}: could not extract expiry date`

@@ -7,6 +7,8 @@ const pool = require("./connection");
 const userRoute = require("./routes/user");
 const manageDataRoute = require('./routes/manageData');
 const { authenticateUser } = require('./middlewares/auth');
+const { testBrevoConnection } = require('./services/brevoEmailService');
+const { startReminderCron } = require('./services/reminderCron');
 
 const app = express();
 const port = 3000;
@@ -37,4 +39,10 @@ app.get("/health", async (req, res) => {
 
 app.listen(port, () => {
   console.log("Server is running at http://localhost:" + port);
+
+  // Test Brevo email connection on startup
+  testBrevoConnection();
+
+  // Start the reminder cron job
+  startReminderCron();
 });

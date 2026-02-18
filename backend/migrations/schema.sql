@@ -42,3 +42,5 @@ CREATE TABLE reminders (
 CREATE INDEX idx_documents_user_id ON documents(user_id);
 CREATE INDEX idx_reminders_user_id ON reminders(user_id);
 CREATE INDEX idx_reminders_status ON reminders(status);
+CREATE INDEX idx_reminders_pending_due ON reminders(status, remind_at)
+  WHERE status = 'pending';
