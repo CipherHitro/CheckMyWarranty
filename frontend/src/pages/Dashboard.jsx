@@ -4,7 +4,6 @@ import toast from "react-hot-toast";
 
 import Button from "../components/ui/Button";
 import Spinner from "../components/ui/Spinner";
-import FilePreviewModal from "../components/dashboard/FilePreviewModal";
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3000/api";
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || "http://localhost:3000";
@@ -23,7 +22,6 @@ const Dashboard = () => {
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [dragActive, setDragActive] = useState(false);
-  const [previewFile, setPreviewFile] = useState(null);
   const fileInputRef = useRef(null);
 
   // ── Fetch all documents from backend ──────────────────────────
@@ -305,10 +303,10 @@ const Dashboard = () => {
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
-                        setPreviewFile(doc);
+                        window.open(getFullUrl(doc.file_url), "_blank");
                       }}
                       className="p-2 bg-white/90 rounded-xl text-surface-700 hover:bg-white transition-colors cursor-pointer"
-                      title="Preview"
+                      title="Open in new tab"
                     >
                       <Eye size={18} />
                     </button>
@@ -363,14 +361,6 @@ const Dashboard = () => {
         </div>
       )}
 
-      {/* Preview modal */}
-      {previewFile && (
-        <FilePreviewModal
-          file={previewFile}
-          backendUrl={BACKEND_URL}
-          onClose={() => setPreviewFile(null)}
-        />
-      )}
     </div>
   );
 };
