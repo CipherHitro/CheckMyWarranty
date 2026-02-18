@@ -1,4 +1,5 @@
 import { createContext, useContext, useState, useEffect } from "react";
+import Cookies from "js-cookie";
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3000/api";
 const MODE = import.meta.env.VITE_MODE;
@@ -20,10 +21,7 @@ export const AuthProvider = ({ children }) => {
   // On mount, check if a cookie token exists (dev mode only)
   useEffect(() => {
     if (MODE === "development") {
-      const token = document.cookie
-        .split("; ")
-        .find((row) => row.startsWith("uid="))
-        ?.split("=")[1];
+      const token = Cookies.get("uid");
 
       if (token) {
         try {
@@ -35,7 +33,7 @@ export const AuthProvider = ({ children }) => {
           });
         } catch {
           // Invalid token, clear it
-          document.cookie = "uid=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
+          Cookies.remove("uid", { path: "/" });
         }
       }
     }
@@ -66,7 +64,7 @@ export const AuthProvider = ({ children }) => {
 
     // In development, backend sends the token in response — store as cookie
     if (MODE === "development" && data.token) {
-      document.cookie = `uid=${data.token}; path=/;`;
+      Cookies.set("uid", data.token, { path: "/" });
 
       // Decode JWT payload to get user info
       const payload = JSON.parse(atob(data.token.split(".")[1]));
@@ -118,7 +116,7 @@ export const AuthProvider = ({ children }) => {
 
   const logout = () => {
     if (MODE === "development") {
-      document.cookie = "uid=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
+      Cookies.remove("uid", { path: "/" });
     }
     setUser(null);
   };

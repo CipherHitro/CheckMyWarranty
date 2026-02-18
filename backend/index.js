@@ -4,6 +4,8 @@ const cors = require("cors");
 require("dotenv").config();
 const pool = require("./connection");
 const userRoute = require("./routes/user");
+const manageDataRoute = require('./routes/manageData')
+
 const app = express();
 const port = 3000;
 
@@ -17,7 +19,7 @@ app.use(cookieParser());
 
 // Routes
 app.use("/api/user", userRoute);
-
+app.use('/api/data', authenticateUser, manageDataRoute);
 app.get("/health", async (req, res) => {
   try {
     await pool.query("SELECT 1");
