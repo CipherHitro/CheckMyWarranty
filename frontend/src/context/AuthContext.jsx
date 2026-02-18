@@ -1,5 +1,8 @@
 import { createContext, useContext, useState, useEffect } from "react";
 
+const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3000/api";
+const MODE = import.meta.env.VITE_MODE;
+
 const AuthContext = createContext(null);
 
 export const useAuth = () => {
@@ -14,68 +17,110 @@ export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  // On mount, check localStorage for a saved session
+  // On mount, check if a cookie token exists (dev mode only)
   useEffect(() => {
-    const stored = localStorage.getItem("cmw_user");
-    if (stored) {
-      try {
-        setUser(JSON.parse(stored));
-      } catch {
-        localStorage.removeItem("cmw_user");
+    if (MODE === "development") {
+      const token = document.cookie
+        .split("; ")
+        .find((row) => row.startsWith("uid="))
+        ?.split("=")[1];
+
+      if (token) {
+        try {
+          const payload = JSON.parse(atob(token.split(".")[1]));
+          setUser({
+            id: payload.id,
+            name: payload.name || payload.email?.split("@")[0],
+            email: payload.email,
+          });
+        } catch {
+          // Invalid token, clear it
+          document.cookie = "uid=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
+        }
       }
     }
     setLoading(false);
   }, []);
 
-  // Simulated login — replace with real API later
   const login = async (email, password) => {
     setLoading(true);
-    // Simulate network delay
-    await new Promise((r) => setTimeout(r, 1200));
 
-    // Mock validation
     if (!email || !password) {
       setLoading(false);
       throw new Error("Email and password are required");
     }
 
+    const res = await fetch(`${API_URL}/user/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ email, password }),
+    });
+
+    const data = await res.json();
+
+    if (!res.ok) {
+      setLoading(false);
+      throw new Error(data.message || "Login failed");
+    }
+
+    // In development, backend sends the token in response — store as cookie
+    if (MODE === "development" && data.token) {
+      document.cookie = `uid=${data.token}; path=/;`;
+
+      // Decode JWT payload to get user info
+      const payload = JSON.parse(atob(data.token.split(".")[1]));
+      const userData = {
+        id: payload.id,
+        name: payload.name || email.split("@")[0],
+        email: payload.email,
+      };
+      setUser(userData);
+      setLoading(false);
+      return userData;
+    }
+
+    // In production, backend sets httpOnly cookie — just set user state and navigate
     const userData = {
-      id: crypto.randomUUID(),
       name: email.split("@")[0],
       email,
     };
-
     setUser(userData);
-    localStorage.setItem("cmw_user", JSON.stringify(userData));
     setLoading(false);
     return userData;
   };
 
-  // Simulated signup — replace with real API later
   const signup = async (name, email, password) => {
     setLoading(true);
-    await new Promise((r) => setTimeout(r, 1200));
 
-    if (!name || !email || !password) {
+    if (!email || !password) {
       setLoading(false);
-      throw new Error("All fields are required");
+      throw new Error("Email and password are required");
     }
 
-    const userData = {
-      id: crypto.randomUUID(),
-      name,
-      email,
-    };
+    const res = await fetch(`${API_URL}/user/signup`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password }),
+    });
 
-    setUser(userData);
-    localStorage.setItem("cmw_user", JSON.stringify(userData));
-    setLoading(false);
+    const data = await res.json();
+
+    if (!res.ok) {
+      setLoading(false);
+      throw new Error(data.message || "Signup failed");
+    }
+
+    // Auto-login after successful signup
+    const userData = await login(email, password);
     return userData;
   };
 
   const logout = () => {
+    if (MODE === "development") {
+      document.cookie = "uid=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
+    }
     setUser(null);
-    localStorage.removeItem("cmw_user");
   };
 
   return (

@@ -43,6 +43,7 @@ const Dashboard = () => {
 
       if (valid.length) {
         setFiles((prev) => [...prev, ...valid]);
+        console.log("Uploaded files:", valid.map((f) => ({ name: f.name, size: f.size, type: f.type })));
         toast.success(`${valid.length} file(s) added`);
       }
     },
