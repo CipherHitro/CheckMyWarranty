@@ -50,6 +50,19 @@ const Dashboard = () => {
     fetchDocuments();
   }, [fetchDocuments]);
 
+  // ── Poll for pending extractions ──────────────────────────────
+  // If any document still has expiry_date === null, re-fetch every 4s
+  useEffect(() => {
+    const hasPending = documents.some((d) => !d.expiry_date);
+    if (!hasPending) return;
+
+    const interval = setInterval(() => {
+      fetchDocuments();
+    }, 4000);
+
+    return () => clearInterval(interval);
+  }, [documents, fetchDocuments]);
+
   // ── Upload file to backend ────────────────────────────────────
   const uploadFile = async (file) => {
     const formData = new FormData();
@@ -325,7 +338,10 @@ const Dashboard = () => {
                     </p>
                     <p className="text-xs text-surface-400 flex items-center gap-1">
                       <Calendar size={10} />
-                      Expires {formatDate(doc.expiry_date)}
+                      {doc.expiry_date
+                        ? `Expires ${formatDate(doc.expiry_date)}`
+                        : <span className="text-amber-500 animate-pulse">Extracting…</span>
+                      }
                     </p>
                   </div>
                 </div>

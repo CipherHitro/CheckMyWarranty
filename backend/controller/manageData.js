@@ -1,15 +1,8 @@
 const pool = require("../connection");
 const path = require("path");
 const fs = require("fs");
+const { extractWarrantyDetails } = require("../services/extractWarranty");
 require('dotenv').config();
-
-// Helper: generate a random future expiry date (between 1-3 years from now)
-function getRandomExpiryDate() {
-    const now = new Date();
-    const randomDays = Math.floor(Math.random() * 730) + 365; // 1-3 years
-    now.setDate(now.getDate() + randomDays);
-    return now.toISOString().split("T")[0]; // YYYY-MM-DD
-}
 
 async function handleAddFile(req, res) {
     try {
@@ -21,17 +14,42 @@ async function handleAddFile(req, res) {
 
         const fileUrl = `/uploads/${req.file.filename}`;
         const originalFilename = req.file.originalname;
-        const expiryDate = getRandomExpiryDate();
 
+        // Step 1 — Insert with expiry_date = null
         const result = await pool.query(
             `INSERT INTO documents (user_id, file_url, original_filename, expiry_date)
              VALUES ($1, $2, $3, $4) RETURNING *`,
-            [userId, fileUrl, originalFilename, expiryDate]
+            [userId, fileUrl, originalFilename, null]
         );
 
+        const document = result.rows[0];
+
+        // Step 2 — Kick off AI extraction in the background
+        const absolutePath = path.join(__dirname, "..", fileUrl);
+        extractWarrantyDetails(absolutePath, originalFilename)
+            .then(async (extracted) => {
+                if (extracted && extracted.expiry_date) {
+                    await pool.query(
+                        "UPDATE documents SET expiry_date = $1 WHERE id = $2",
+                        [extracted.expiry_date, document.id]
+                    );
+                    console.log(
+                        `[extract] Document ${document.id}: expiry_date updated to ${extracted.expiry_date}`
+                    );
+                } else {
+                    console.log(
+                        `[extract] Document ${document.id}: could not extract expiry date`
+                    );
+                }
+            })
+            .catch((err) => {
+                console.error(`[extract] Document ${document.id}: extraction error —`, err.message);
+            });
+
+        // Respond immediately (extraction runs in background)
         return res.status(201).json({
-            message: "File uploaded successfully",
-            document: result.rows[0],
+            message: "File uploaded successfully. Warranty details are being extracted.",
+            document,
         });
     } catch (error) {
         console.error("Error uploading file:", error);
