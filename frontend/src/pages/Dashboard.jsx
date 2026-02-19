@@ -299,14 +299,14 @@ const Dashboard = () => {
                     </div>
                   )}
 
-                  {/* Hover overlay */}
-                  <div className="absolute inset-0 bg-surface-900/0 group-hover:bg-surface-900/40 transition-all duration-200 flex items-center justify-center gap-2 opacity-0 group-hover:opacity-100">
+                  {/* Action overlay — always visible on mobile, hover-only on desktop */}
+                  <div className="absolute inset-0 pointer-events-none bg-gradient-to-t from-surface-900/50 to-transparent sm:from-transparent sm:bg-surface-900/0 sm:group-hover:bg-surface-900/40 transition-all duration-200 flex items-end justify-center pb-3 sm:items-center sm:pb-0 gap-2 opacity-100 sm:opacity-0 sm:group-hover:opacity-100">
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
                         window.open(getFullUrl(doc.file_url), "_blank");
                       }}
-                      className="p-2 bg-white/90 rounded-xl text-surface-700 hover:bg-white transition-colors cursor-pointer"
+                      className="pointer-events-auto p-2 bg-white/90 rounded-xl text-surface-700 hover:bg-white transition-colors cursor-pointer"
                       title="Open in new tab"
                     >
                       <Eye size={18} />
@@ -316,7 +316,7 @@ const Dashboard = () => {
                         e.stopPropagation();
                         removeFile(doc.id);
                       }}
-                      className="p-2 bg-white/90 rounded-xl text-red-500 hover:bg-white transition-colors cursor-pointer"
+                      className="pointer-events-auto p-2 bg-white/90 rounded-xl text-red-500 hover:bg-white transition-colors cursor-pointer"
                       title="Remove"
                     >
                       <Trash2 size={18} />
