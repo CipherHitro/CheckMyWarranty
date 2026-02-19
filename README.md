@@ -5,7 +5,7 @@ A full-stack web application that helps users manage product warranties by uploa
 🚀 **Live Demo:** [checkmywarranty.vercel.app](https://checkmywarranty.vercel.app/)
 
 🔑 **Demo Credentials:**
-- Email: `demo@example.com`
+- Email: `demo@gmail.com`
 - Password: `Demo@123`
 
 ---
