@@ -169,7 +169,8 @@ const Dashboard = () => {
   };
 
   // ── Helpers ───────────────────────────────────────────────────
-  const getFullUrl = (fileUrl) => `${BACKEND_URL}${fileUrl}`;
+  const getFullUrl = (fileUrl) =>
+    fileUrl.startsWith("http") ? fileUrl : `${BACKEND_URL}${fileUrl}`;
 
   const isImage = (doc) => {
     const name = doc.original_filename?.toLowerCase() || "";

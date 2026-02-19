@@ -3,7 +3,9 @@ import { X, Download, FileText } from "lucide-react";
 
 const FilePreviewModal = ({ file, backendUrl, onClose }) => {
   // file is now a document object from the DB: { id, file_url, original_filename, expiry_date, ... }
-  const url = `${backendUrl}${file.file_url}`;
+  const url = file.file_url.startsWith("http")
+    ? file.file_url
+    : `${backendUrl}${file.file_url}`;
   const name = file.original_filename || "file";
   const isImage = /\.(jpe?g|png|webp|gif)$/i.test(name);
 

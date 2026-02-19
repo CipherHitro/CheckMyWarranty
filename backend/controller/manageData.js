@@ -1,8 +1,17 @@
 const pool = require("../connection");
 const path = require("path");
 const fs = require("fs");
+const os = require("os");
 const { extractWarrantyDetails } = require("../services/extractWarranty");
-require('dotenv').config();
+const {
+    uploadToSupabase,
+    deleteFromSupabase,
+    getSignedUrl,
+    downloadFromSupabase,
+} = require("../services/supabaseStorage");
+require("dotenv").config();
+
+const isProduction = process.env.mode === "production";
 
 async function handleAddFile(req, res) {
     try {
@@ -12,8 +21,30 @@ async function handleAddFile(req, res) {
             return res.status(400).json({ message: "No file uploaded" });
         }
 
-        const fileUrl = `/uploads/${req.file.filename}`;
+        let fileUrl;
+        let extractionFilePath;
         const originalFilename = req.file.originalname;
+
+        if (isProduction) {
+            // ── Production: upload to Supabase Storage ──
+            const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
+            const ext = path.extname(originalFilename);
+            const storageName = uniqueSuffix + ext;
+
+            fileUrl = await uploadToSupabase(
+                req.file.buffer,
+                storageName,
+                req.file.mimetype
+            );
+
+            // Write buffer to a temp file for AI extraction
+            extractionFilePath = path.join(os.tmpdir(), storageName);
+            fs.writeFileSync(extractionFilePath, req.file.buffer);
+        } else {
+            // ── Development: file is already on disk via multer diskStorage ──
+            fileUrl = `/uploads/${req.file.filename}`;
+            extractionFilePath = path.join(__dirname, "..", fileUrl);
+        }
 
         // Step 1 — Insert with expiry_date = null
         const result = await pool.query(
@@ -25,9 +56,13 @@ async function handleAddFile(req, res) {
         const document = result.rows[0];
 
         // Step 2 — Kick off AI extraction in the background
-        const absolutePath = path.join(__dirname, "..", fileUrl);
-        extractWarrantyDetails(absolutePath, originalFilename)
+        extractWarrantyDetails(extractionFilePath, originalFilename)
             .then(async (extracted) => {
+                // Clean up temp file in production
+                if (isProduction) {
+                    try { fs.unlinkSync(extractionFilePath); } catch (_) {}
+                }
+
                 if (extracted && extracted.expiry_date) {
                     await pool.query(
                         "UPDATE documents SET expiry_date = $1 WHERE id = $2",
@@ -43,7 +78,6 @@ async function handleAddFile(req, res) {
                         const expiryDate = new Date(extracted.expiry_date);
 
                         if (expiryDate <= now) {
-                            // Expiry already passed — no reminder needed
                             console.log(
                                 `[reminder] Document ${document.id}: expiry already passed — skipping reminder`
                             );
@@ -53,15 +87,12 @@ async function handleAddFile(req, res) {
 
                             let remindAt;
                             if (daysRemaining >= 7) {
-                                // Normal case — remind 7 days before
                                 remindAt = new Date(expiryDate);
                                 remindAt.setDate(remindAt.getDate() - 7);
                             } else if (daysRemaining >= 3) {
-                                // Less than 7 days — skip straight to 3-day reminder
                                 remindAt = new Date(expiryDate);
                                 remindAt.setDate(remindAt.getDate() - 3);
                             } else {
-                                // Less than 3 days — remind immediately
                                 remindAt = now;
                             }
 
@@ -87,6 +118,10 @@ async function handleAddFile(req, res) {
                 }
             })
             .catch((err) => {
+                // Clean up temp file in production on error too
+                if (isProduction) {
+                    try { fs.unlinkSync(extractionFilePath); } catch (_) {}
+                }
                 console.error(`[extract] Document ${document.id}: extraction error —`, err.message);
             });
 
@@ -120,10 +155,23 @@ async function handleRemoveFile(req, res) {
             return res.status(404).json({ message: "Document not found" });
         }
 
-        // Delete the physical file from disk
-        const filePath = path.join(__dirname, "..", doc.rows[0].file_url);
-        if (fs.existsSync(filePath)) {
-            fs.unlinkSync(filePath);
+        const fileUrl = doc.rows[0].file_url;
+
+        if (fileUrl.startsWith("/uploads/")) {
+            // Old local file — delete from disk regardless of mode
+            const filePath = path.join(__dirname, "..", fileUrl);
+            if (fs.existsSync(filePath)) {
+                fs.unlinkSync(filePath);
+            }
+        } else if (isProduction) {
+            // ── Production: delete from Supabase Storage ──
+            await deleteFromSupabase(fileUrl);
+        } else {
+            // ── Development: delete from local disk ──
+            const filePath = path.join(__dirname, "..", fileUrl);
+            if (fs.existsSync(filePath)) {
+                fs.unlinkSync(filePath);
+            }
         }
 
         // Delete the record from the database
@@ -148,9 +196,33 @@ async function handleFetchAll(req, res) {
             [userId]
         );
 
+        let documents = result.rows;
+
+        if (isProduction) {
+            // ── Production: generate signed URLs for Supabase-stored documents ──
+            documents = await Promise.all(
+                documents.map(async (doc) => {
+                    // Skip old documents that were stored locally before Supabase migration
+                    if (doc.file_url.startsWith("/uploads/")) {
+                        return doc;
+                    }
+                    try {
+                        const signedUrl = await getSignedUrl(doc.file_url, 3600);
+                        return { ...doc, file_url: signedUrl };
+                    } catch (err) {
+                        console.error(
+                            `[storage] Failed to generate signed URL for doc ${doc.id}:`,
+                            err.message
+                        );
+                        return doc;
+                    }
+                })
+            );
+        }
+
         return res.status(200).json({
             message: "Documents fetched successfully",
-            documents: result.rows,
+            documents,
         });
     } catch (error) {
         console.error("Error fetching documents:", error);

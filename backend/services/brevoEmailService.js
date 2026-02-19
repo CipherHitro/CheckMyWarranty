@@ -1,22 +1,11 @@
-const Brevo = require("@getbrevo/brevo");
+const { BrevoClient } = require("@getbrevo/brevo");
 require("dotenv").config();
 
-const apiInstance = new Brevo.AccountApi();
-const transactionalEmailApi = new Brevo.TransactionalEmailsApi();
-
-apiInstance.setApiKey(
-  Brevo.AccountApiApiKeys.apiKey,
-  process.env.BREVO_API
-);
-
-transactionalEmailApi.setApiKey(
-  Brevo.TransactionalEmailsApiApiKeys.apiKey,
-  process.env.BREVO_API
-);
+const brevo = new BrevoClient({ apiKey: process.env.BREVO_API });
 
 async function testBrevoConnection() {
   try {
-    const response = await apiInstance.getAccount();
+    const response = await brevo.account.getAccount();
     console.log("✅ Brevo connection successful");
     console.log("Account info:", response);
     return true;
@@ -38,8 +27,6 @@ async function testBrevoConnection() {
  */
 async function sendReminderEmail(toEmail, documentName, expiryDate, daysRemaining) {
   try {
-    const sendSmtpEmail = new Brevo.SendSmtpEmail();
-
     const senderEmail = process.env.BREVO_SENDER_EMAIL;
     const senderName = process.env.BREVO_SENDER_NAME || "CheckMyWarranty";
 
@@ -55,9 +42,9 @@ async function sendReminderEmail(toEmail, documentName, expiryDate, daysRemainin
       day: "numeric",
     });
 
-    sendSmtpEmail.subject = `${urgency}: Warranty for "${documentName}" expires in ${daysRemaining} day${daysRemaining !== 1 ? "s" : ""}`;
-
-    sendSmtpEmail.htmlContent = `
+    const response = await brevo.transactionalEmails.sendTransacEmail({
+      subject: `${urgency}: Warranty for "${documentName}" expires in ${daysRemaining} day${daysRemaining !== 1 ? "s" : ""}`,
+      htmlContent: `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
         <h2 style="color: #1a1a2e;">${urgency}: Warranty Expiring Soon</h2>
         <div style="background: #f8f9fa; border-left: 4px solid ${daysRemaining <= 3 ? "#e74c3c" : "#f39c12"}; padding: 16px; margin: 16px 0; border-radius: 4px;">
@@ -71,12 +58,11 @@ async function sendReminderEmail(toEmail, documentName, expiryDate, daysRemainin
         <hr style="border: none; border-top: 1px solid #eee; margin: 24px 0;" />
         <p style="color: #999; font-size: 12px;">This is an automated reminder from CheckMyWarranty.</p>
       </div>
-    `;
+      `,
+      sender: { name: senderName, email: senderEmail },
+      to: [{ email: toEmail }],
+    });
 
-    sendSmtpEmail.sender = { name: senderName, email: senderEmail };
-    sendSmtpEmail.to = [{ email: toEmail }];
-
-    const response = await transactionalEmailApi.sendTransacEmail(sendSmtpEmail);
     console.log(`✅ Reminder email sent to ${toEmail} for "${documentName}" (${daysRemaining} days left)`);
     return { success: true, messageId: response.messageId };
   } catch (error) {
