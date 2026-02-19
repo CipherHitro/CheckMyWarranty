@@ -186,6 +186,11 @@ const Dashboard = () => {
     });
   };
 
+  const isExpired = (dateStr) => {
+    if (!dateStr) return false;
+    return new Date(dateStr) < new Date();
+  };
+
   // ── Loading state ─────────────────────────────────────────────
   if (loading) {
     return (
@@ -338,7 +343,9 @@ const Dashboard = () => {
                     <p className="text-xs text-surface-400 flex items-center gap-1">
                       <Calendar size={10} />
                       {doc.expiry_date
-                        ? `Expires ${formatDate(doc.expiry_date)}`
+                        ? isExpired(doc.expiry_date)
+                          ? <span className="text-red-500 font-semibold">Expired</span>
+                          : `Expires ${formatDate(doc.expiry_date)}`
                         : <span className="text-amber-500 animate-pulse">Extracting…</span>
                       }
                     </p>
