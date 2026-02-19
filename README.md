@@ -2,6 +2,12 @@
 
 A full-stack web application that helps users manage product warranties by uploading warranty documents (PDFs and images), automatically extracting expiry dates using AI, and sending email reminders before warranties expire.
 
+🚀 **Live Demo:** [checkmywarranty.vercel.app](https://checkmywarranty.vercel.app/)
+
+🔑 **Demo Credentials:**
+- Email: `demo@example.com`
+- Password: `Demo@123`
+
 ---
 
 ## ✨ Features
