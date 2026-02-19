@@ -64,7 +64,7 @@ export const AuthProvider = ({ children }) => {
 
     // In development, backend sends the token in response — store as cookie
     if (MODE === "development" && data.token) {
-      Cookies.set("uid", data.token, { path: "/" });
+      Cookies.set("uid", data.token, { path: "/", expires: 1 });
 
       // Decode JWT payload to get user info
       const payload = JSON.parse(atob(data.token.split(".")[1]));
