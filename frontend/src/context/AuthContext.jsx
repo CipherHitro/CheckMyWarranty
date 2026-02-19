@@ -18,26 +18,31 @@ export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  // On mount, check if a cookie token exists (dev mode only)
+  // On mount, verify session by calling the backend /me endpoint
   useEffect(() => {
-    if (MODE === "development") {
-      const token = Cookies.get("uid");
+    const verifySession = async () => {
+      try {
+        const res = await fetch(`${API_URL}/user/me`, {
+          method: "GET",
+          credentials: "include",
+        });
 
-      if (token) {
-        try {
-          const payload = JSON.parse(atob(token.split(".")[1]));
-          setUser({
-            id: payload.id,
-            name: payload.name || payload.email?.split("@")[0],
-            email: payload.email,
-          });
-        } catch {
-          // Invalid token, clear it
+        if (res.ok) {
+          const data = await res.json();
+          setUser(data.user);
+        } else {
+          // No valid session — clear any stale dev cookie
           Cookies.remove("uid", { path: "/" });
+          setUser(null);
         }
+      } catch {
+        setUser(null);
+      } finally {
+        setLoading(false);
       }
-    }
-    setLoading(false);
+    };
+
+    verifySession();
   }, []);
 
   const login = async (email, password) => {
@@ -65,27 +70,23 @@ export const AuthProvider = ({ children }) => {
     // In development, backend sends the token in response — store as cookie
     if (MODE === "development" && data.token) {
       Cookies.set("uid", data.token, { path: "/", expires: 1 });
-
-      // Decode JWT payload to get user info
-      const payload = JSON.parse(atob(data.token.split(".")[1]));
-      const userData = {
-        id: payload.id,
-        name: payload.name || email.split("@")[0],
-        email: payload.email,
-      };
-      setUser(userData);
-      setLoading(false);
-      return userData;
     }
 
-    // In production, backend sets httpOnly cookie — just set user state and navigate
-    const userData = {
-      name: email.split("@")[0],
-      email,
-    };
-    setUser(userData);
+    // Fetch user info from the /me endpoint (works in both modes)
+    const meRes = await fetch(`${API_URL}/user/me`, {
+      method: "GET",
+      credentials: "include",
+    });
+
+    if (meRes.ok) {
+      const meData = await meRes.json();
+      setUser(meData.user);
+      setLoading(false);
+      return meData.user;
+    }
+
     setLoading(false);
-    return userData;
+    throw new Error("Failed to retrieve user info after login");
   };
 
   const signup = async (name, email, password) => {
@@ -114,12 +115,23 @@ export const AuthProvider = ({ children }) => {
     return userData;
   };
 
-  const logout = () => {
+  const logout = async () => {
     if(!confirm("Do you want to logout?")){
       return
     }
+
+    // Clear httpOnly cookie via backend
+    try {
+      await fetch(`${API_URL}/user/logout`, {
+        method: "POST",
+        credentials: "include",
+      });
+    } catch {
+      // Ignore network errors on logout
+    }
+
+    // Also clear non-httpOnly dev cookie
     Cookies.remove("uid", { path: "/" });
-  
     setUser(null);
   };
 
