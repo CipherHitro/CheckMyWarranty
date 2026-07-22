@@ -1,5 +1,5 @@
-const { createClient } = require("@supabase/supabase-js");
-require("dotenv").config();
+import { createClient } from "@supabase/supabase-js";
+import "dotenv/config";
 
 const supabaseUrl = process.env.SUPABASE_URL;
 const supabaseKey = process.env.SERVICE_ROLE;
@@ -82,7 +82,7 @@ async function downloadFromSupabase(storagePath) {
     return Buffer.from(arrayBuffer);
 }
 
-module.exports = {
+export {
     uploadToSupabase,
     deleteFromSupabase,
     getSignedUrl,

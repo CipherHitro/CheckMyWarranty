@@ -1,8 +1,8 @@
-const express = require('express');
-const multer = require('multer');
-const path = require('path');
-require('dotenv').config();
-const { handleAddFile, handleRemoveFile, handleFetchAll } = require('../controller/manageData');
+import express from 'express';
+import multer from 'multer';
+import path from 'path';
+import 'dotenv/config';
+import { handleAddFile, handleRemoveFile, handleFetchAll } from '../controller/manageData.js';
 
 const router = express.Router();
 
@@ -18,7 +18,7 @@ if (isProduction) {
     // In development, store files locally in backend/uploads/
     const diskStorage = multer.diskStorage({
         destination: function (req, file, cb) {
-            cb(null, path.join(__dirname, '..', 'uploads'));
+            cb(null, path.join(import.meta.dirname, '..', 'uploads'));
         },
         filename: function (req, file, cb) {
             const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
@@ -33,4 +33,4 @@ router.post('/upload', upload.single('file'), handleAddFile);
 router.delete('/remove', handleRemoveFile);
 router.get('/getAll', handleFetchAll);
 
-module.exports = router;
+export default router;

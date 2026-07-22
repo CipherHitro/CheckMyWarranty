@@ -1,9 +1,9 @@
-const { BrevoClient } = require("@getbrevo/brevo");
-require("dotenv").config();
+import { BrevoClient } from "@getbrevo/brevo";
+import "dotenv/config";
 
 const brevo = new BrevoClient({ apiKey: process.env.BREVO_API });
 
-async function testBrevoConnection() {
+export async function testBrevoConnection() {
   try {
     const response = await brevo.account.getAccount();
     console.log("✅ Brevo connection successful");
@@ -25,7 +25,7 @@ async function testBrevoConnection() {
  * @param {string} expiryDate - Expiry date string (YYYY-MM-DD)
  * @param {number} daysRemaining - Days until expiry
  */
-async function sendReminderEmail(toEmail, documentName, expiryDate, daysRemaining) {
+export async function sendReminderEmail(toEmail, documentName, expiryDate, daysRemaining) {
   try {
     const senderEmail = process.env.BREVO_SENDER_EMAIL;
     const senderName = process.env.BREVO_SENDER_NAME || "CheckMyWarranty";
@@ -73,8 +73,3 @@ async function sendReminderEmail(toEmail, documentName, expiryDate, daysRemainin
     return { success: false, error: error.message };
   }
 }
-
-module.exports = {
-  testBrevoConnection,
-  sendReminderEmail,
-};

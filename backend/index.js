@@ -1,14 +1,14 @@
-const express = require("express");
-const cookieParser = require("cookie-parser");
-const cors = require("cors");
-const path = require("path");
-require("dotenv").config();
-const pool = require("./connection");
-const userRoute = require("./routes/user");
-const manageDataRoute = require('./routes/manageData');
-const { authenticateUser } = require('./middlewares/auth');
-const { testBrevoConnection } = require('./services/brevoEmailService');
-const { startReminderCron } = require('./services/reminderCron');
+import express from "express";
+import cookieParser from "cookie-parser";
+import cors from "cors";
+import path from "path";
+import "dotenv/config";
+import pool from "./connection.js";
+import userRoute from "./routes/user.js";
+import manageDataRoute from './routes/manageData.js';
+import { authenticateUser } from './middlewares/auth.js';
+import { testBrevoConnection } from './services/brevoEmailService.js';
+import { startReminderCron } from './services/reminderCron.js';
 
 const app = express();
 const port = 3000;
@@ -23,7 +23,7 @@ app.use(express.json());
 app.use(cookieParser());
 
 // Serve uploaded files statically
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+app.use('/uploads', express.static(path.join(import.meta.dirname, 'uploads')));
 
 // Routes
 app.use("/api/user", userRoute);
@@ -46,8 +46,8 @@ app.listen(port, () => {
   console.log("Server is running at http://localhost:" + port);
 
   // Test Brevo email connection on startup
-  testBrevoConnection();
+  // testBrevoConnection();
 
   // Start the reminder cron job
-  startReminderCron();
+  // startReminderCron();
 });

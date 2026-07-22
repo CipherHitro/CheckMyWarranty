@@ -1,7 +1,7 @@
-const cron = require("node-cron");
-const pool = require("../connection");
-const { sendReminderEmail } = require("./brevoEmailService");
-require("dotenv").config();
+import cron from "node-cron";
+import pool from "../connection.js";
+import { sendReminderEmail } from "./brevoEmailService.js";
+import "dotenv/config";
 
 /**
  * Process all pending reminders whose remind_at time has arrived.
@@ -105,7 +105,7 @@ async function processReminders() {
  * Runs every hour at minute 0 (e.g. 9:00, 10:00, 11:00 …).
  */
 function startReminderCron() {
-  // "0 * * * *" = at minute 0 of every hour
+  // "* * * * *" = every minute (for testing)
   cron.schedule("* * * * *", () => {
     console.log("[cron] Running reminder check…", new Date().toISOString());
     processReminders();
@@ -117,4 +117,4 @@ function startReminderCron() {
   processReminders();
 }
 
-module.exports = { startReminderCron, processReminders };
+export { startReminderCron, processReminders };

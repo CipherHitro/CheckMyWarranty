@@ -1,16 +1,17 @@
-const jwt = require('jsonwebtoken')
-require('dotenv').config();
-const secret = process.env.secret
+import jwt from 'jsonwebtoken';
+import 'dotenv/config';
 
-function setUser(user){
+const secret = process.env.secret;
+
+export function setUser(user){
     return jwt.sign({
         id:user.id,
         name:user.name,
         email:user.email
-    }, secret)
+    }, secret);
 }
 
-function getUser(token){
+export function getUser(token){
     if(!token) return null;
 
     try {
@@ -19,9 +20,4 @@ function getUser(token){
     catch(err){
         return null;
     }
-}
-
-module.exports = {
-    setUser,
-    getUser
 }

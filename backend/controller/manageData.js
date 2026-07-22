@@ -1,15 +1,15 @@
-const pool = require("../connection");
-const path = require("path");
-const fs = require("fs");
-const os = require("os");
-const { extractWarrantyDetails } = require("../services/extractWarranty");
-const {
+import pool from "../connection.js";
+import path from "path";
+import fs from "fs";
+import os from "os";
+import { extractWarrantyDetails } from "../services/extractWarranty.js";
+import {
     uploadToSupabase,
     deleteFromSupabase,
     getSignedUrl,
     downloadFromSupabase,
-} = require("../services/supabaseStorage");
-require("dotenv").config();
+} from "../services/supabaseStorage.js";
+import "dotenv/config";
 
 const isProduction = process.env.mode === "production";
 
@@ -43,7 +43,7 @@ async function handleAddFile(req, res) {
         } else {
             // ── Development: file is already on disk via multer diskStorage ──
             fileUrl = `/uploads/${req.file.filename}`;
-            extractionFilePath = path.join(__dirname, "..", fileUrl);
+            extractionFilePath = path.join(import.meta.dirname, "..", fileUrl);
         }
 
         // Step 1 — Insert with expiry_date = null
@@ -159,7 +159,7 @@ async function handleRemoveFile(req, res) {
 
         if (fileUrl.startsWith("/uploads/")) {
             // Old local file — delete from disk regardless of mode
-            const filePath = path.join(__dirname, "..", fileUrl);
+            const filePath = path.join(import.meta.dirname, "..", fileUrl);
             if (fs.existsSync(filePath)) {
                 fs.unlinkSync(filePath);
             }
@@ -168,7 +168,7 @@ async function handleRemoveFile(req, res) {
             await deleteFromSupabase(fileUrl);
         } else {
             // ── Development: delete from local disk ──
-            const filePath = path.join(__dirname, "..", fileUrl);
+            const filePath = path.join(import.meta.dirname, "..", fileUrl);
             if (fs.existsSync(filePath)) {
                 fs.unlinkSync(filePath);
             }
@@ -230,8 +230,8 @@ async function handleFetchAll(req, res) {
     }
 }
 
-module.exports = {
+export {
     handleAddFile,
     handleRemoveFile,
     handleFetchAll,
-}
+};

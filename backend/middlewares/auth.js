@@ -1,5 +1,5 @@
-const { getUser } = require('../services/auth');
-const pool = require('../connection')
+import { getUser } from '../services/auth.js';
+import pool from '../connection.js';
 
 async function authenticateUser(req, res, next) {
   try {
@@ -33,6 +33,4 @@ async function authenticateUser(req, res, next) {
   }
 }
 
-module.exports = {
-  authenticateUser,
-};
+export { authenticateUser };

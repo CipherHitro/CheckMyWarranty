@@ -1,7 +1,7 @@
-const pool = require("../connection");
-const bcrypt = require("bcryptjs");
-const { setUser } = require("../services/auth");
-require('dotenv').config();
+import pool from "../connection.js";
+import bcrypt from "bcryptjs";
+import { setUser } from "../services/auth.js";
+import 'dotenv/config';
 
 async function handleSignUp(req, res) {
   try {
@@ -113,7 +113,7 @@ function handleLogout(req, res) {
   return res.status(200).json({ message: "Logged out successfully" });
 }
 
-module.exports = {
+export {
   handleLogin,
   handleSignUp,
   handleGetMe,

@@ -1,8 +1,8 @@
-const fs = require("fs");
-const path = require("path");
-const { PDFParse } = require("pdf-parse");
-const Groq = require("groq-sdk");
-require("dotenv").config();
+import fs from "fs";
+import path from "path";
+import { PDFParse } from "pdf-parse";
+import Groq from "groq-sdk";
+import "dotenv/config";
 
 const groq = new Groq({ apiKey: process.env.GROQ_API });
 
@@ -199,4 +199,4 @@ async function extractWarrantyDetails(filePath, originalFilename) {
     }
 }
 
-module.exports = { extractWarrantyDetails };
+export { extractWarrantyDetails };
