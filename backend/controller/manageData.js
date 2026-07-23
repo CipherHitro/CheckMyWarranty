@@ -1,4 +1,4 @@
-import pool from "../connection.js";
+import prisma from "../connection.js";
 import path from "path";
 import fs from "fs";
 import os from "os";
@@ -15,7 +15,7 @@ const isProduction = process.env.mode === "production";
 
 async function handleAddFile(req, res) {
     try {
-        const userId = req.user.rows[0].id;
+        const userId = req.user.id;
 
         if (!req.file) {
             return res.status(400).json({ message: "No file uploaded" });
@@ -47,13 +47,14 @@ async function handleAddFile(req, res) {
         }
 
         // Step 1 — Insert with expiry_date = null
-        const result = await pool.query(
-            `INSERT INTO documents (user_id, file_url, original_filename, expiry_date)
-             VALUES ($1, $2, $3, $4) RETURNING *`,
-            [userId, fileUrl, originalFilename, null]
-        );
-
-        const document = result.rows[0];
+        const document = await prisma.documents.create({
+            data: {
+                user_id: userId,
+                file_url: fileUrl,
+                original_filename: originalFilename,
+                expiry_date: null,
+            },
+        });
 
         // Step 2 — Kick off AI extraction in the background
         extractWarrantyDetails(extractionFilePath, originalFilename)
@@ -64,10 +65,10 @@ async function handleAddFile(req, res) {
                 }
 
                 if (extracted && extracted.expiry_date) {
-                    await pool.query(
-                        "UPDATE documents SET expiry_date = $1 WHERE id = $2",
-                        [extracted.expiry_date, document.id]
-                    );
+                    await prisma.documents.update({
+                        where: { id: document.id },
+                        data: { expiry_date: extracted.expiry_date },
+                    });
                     console.log(
                         `[extract] Document ${document.id}: expiry_date updated to ${extracted.expiry_date}`
                     );
@@ -96,11 +97,13 @@ async function handleAddFile(req, res) {
                                 remindAt = now;
                             }
 
-                            await pool.query(
-                                `INSERT INTO reminders (user_id, document_id, remind_at)
-                                 VALUES ($1, $2, $3)`,
-                                [userId, document.id, remindAt]
-                            );
+                            await prisma.reminders.create({
+                                data: {
+                                    user_id: userId,
+                                    document_id: document.id,
+                                    remind_at: remindAt,
+                                },
+                            });
                             console.log(
                                 `[reminder] Document ${document.id}: reminder created for ${remindAt.toISOString()} (${daysRemaining} days until expiry)`
                             );
@@ -128,7 +131,11 @@ async function handleAddFile(req, res) {
         // Respond immediately (extraction runs in background)
         return res.status(201).json({
             message: "File uploaded successfully. Warranty details are being extracted.",
-            document,
+            document: {
+                ...document,
+                id: Number(document.id),
+                user_id: Number(document.user_id),
+            },
         });
     } catch (error) {
         console.error("Error uploading file:", error);
@@ -138,7 +145,7 @@ async function handleAddFile(req, res) {
 
 async function handleRemoveFile(req, res) {
     try {
-        const userId = req.user.rows[0].id;
+        const userId = req.user.id;
         const { documentId } = req.body;
 
         if (!documentId) {
@@ -146,16 +153,15 @@ async function handleRemoveFile(req, res) {
         }
 
         // Fetch the document to get the file path (and verify ownership)
-        const doc = await pool.query(
-            "SELECT * FROM documents WHERE id = $1 AND user_id = $2",
-            [documentId, userId]
-        );
+        const doc = await prisma.documents.findFirst({
+            where: { id: BigInt(documentId), user_id: userId },
+        });
 
-        if (doc.rows.length === 0) {
+        if (!doc) {
             return res.status(404).json({ message: "Document not found" });
         }
 
-        const fileUrl = doc.rows[0].file_url;
+        const fileUrl = doc.file_url;
 
         if (fileUrl.startsWith("/uploads/")) {
             // Old local file — delete from disk regardless of mode
@@ -175,10 +181,9 @@ async function handleRemoveFile(req, res) {
         }
 
         // Delete the record from the database
-        await pool.query(
-            "DELETE FROM documents WHERE id = $1 AND user_id = $2",
-            [documentId, userId]
-        );
+        await prisma.documents.delete({
+            where: { id: BigInt(documentId) },
+        });
 
         return res.status(200).json({ message: "File removed successfully" });
     } catch (error) {
@@ -189,14 +194,19 @@ async function handleRemoveFile(req, res) {
 
 async function handleFetchAll(req, res) {
     try {
-        const userId = req.user.rows[0].id;
+        const userId = req.user.id;
 
-        const result = await pool.query(
-            "SELECT * FROM documents WHERE user_id = $1 ORDER BY created_at DESC",
-            [userId]
-        );
+        let documents = await prisma.documents.findMany({
+            where: { user_id: userId },
+            orderBy: { created_at: "desc" },
+        });
 
-        let documents = result.rows;
+        // Convert BigInt fields for JSON serialization
+        documents = documents.map((doc) => ({
+            ...doc,
+            id: Number(doc.id),
+            user_id: Number(doc.user_id),
+        }));
 
         if (isProduction) {
             // ── Production: generate signed URLs for Supabase-stored documents ──

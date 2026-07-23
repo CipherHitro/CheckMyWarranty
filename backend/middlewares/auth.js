@@ -19,7 +19,6 @@ async function authenticateUser(req, res, next) {
     }
 
     // Get full user details from database
-    // const user = await pool.query('SELECT * FROM USERS WHERE ID = $1', [decoded.id]);
     const user = await prisma.users.findUnique({
       where : {id : decoded.id}
     })

@@ -1,5 +1,5 @@
 import cron from "node-cron";
-import pool from "../connection.js";
+import prisma from "../connection.js";
 import { sendReminderEmail } from "./brevoEmailService.js";
 import "dotenv/config";
 
@@ -15,22 +15,27 @@ import "dotenv/config";
 async function processReminders() {
   try {
     console.log("[cron] processReminders() triggered at", new Date().toISOString());
-    // Fetch all pending reminders that are due
-    const { rows: dueReminders } = await pool.query(
-      `SELECT 
-         r.id AS reminder_id,
-         r.remind_at,
-         r.status,
-         d.id AS document_id,
-         d.original_filename,
-         d.expiry_date,
-         u.email AS user_email
-       FROM reminders r
-       JOIN documents d ON r.document_id = d.id
-       JOIN users u ON r.user_id = u.id
-       WHERE r.status = 'pending'
-         AND r.remind_at <= NOW()`
-    );
+
+    // Fetch all pending reminders that are due with their relations
+    const dueReminders = await prisma.reminders.findMany({
+      where: {
+        status: "pending",
+        remind_at: { lte: new Date() },
+      },
+      include: {
+        documents: {
+          select: {
+            original_filename: true,
+            expiry_date: true,
+          },
+        },
+        users: {
+          select: {
+            email: true,
+          },
+        },
+      },
+    });
 
     if (dueReminders.length === 0) return;
 
@@ -38,16 +43,16 @@ async function processReminders() {
 
     for (const reminder of dueReminders) {
       const now = new Date();
-      const expiryDate = new Date(reminder.expiry_date);
+      const expiryDate = new Date(reminder.documents.expiry_date);
 
       // ── Edge-case: expiry date has already passed ──
       if (expiryDate <= now) {
-        await pool.query(
-          `UPDATE reminders SET status = 'expired' WHERE id = $1`,
-          [reminder.reminder_id]
-        );
+        await prisma.reminders.update({
+          where: { id: reminder.id },
+          data: { status: "expired" },
+        });
         console.log(
-          `[cron] Reminder ${reminder.reminder_id}: expiry already passed — marked expired`
+          `[cron] Reminder ${reminder.id}: expiry already passed — marked expired`
         );
         continue;
       }
@@ -58,15 +63,15 @@ async function processReminders() {
 
       // ── Send the email ──
       const result = await sendReminderEmail(
-        reminder.user_email,
-        reminder.original_filename,
-        reminder.expiry_date,
+        reminder.users.email,
+        reminder.documents.original_filename,
+        reminder.documents.expiry_date,
         daysRemaining
       );
 
       if (!result.success) {
         console.error(
-          `[cron] Reminder ${reminder.reminder_id}: email failed — will retry next cycle`
+          `[cron] Reminder ${reminder.id}: email failed — will retry next cycle`
         );
         continue; // leave it pending so it gets retried
       }
@@ -77,21 +82,21 @@ async function processReminders() {
         const threeBeforeExpiry = new Date(expiryDate);
         threeBeforeExpiry.setDate(threeBeforeExpiry.getDate() - 3);
 
-        await pool.query(
-          `UPDATE reminders SET remind_at = $1 WHERE id = $2`,
-          [threeBeforeExpiry, reminder.reminder_id]
-        );
+        await prisma.reminders.update({
+          where: { id: reminder.id },
+          data: { remind_at: threeBeforeExpiry },
+        });
         console.log(
-          `[cron] Reminder ${reminder.reminder_id}: 7-day email sent — next reminder at ${threeBeforeExpiry.toISOString()}`
+          `[cron] Reminder ${reminder.id}: 7-day email sent — next reminder at ${threeBeforeExpiry.toISOString()}`
         );
       } else {
         // This was the 3-day (or closer) reminder → done
-        await pool.query(
-          `UPDATE reminders SET status = 'sent' WHERE id = $1`,
-          [reminder.reminder_id]
-        );
+        await prisma.reminders.update({
+          where: { id: reminder.id },
+          data: { status: "sent" },
+        });
         console.log(
-          `[cron] Reminder ${reminder.reminder_id}: final reminder sent — marked 'sent'`
+          `[cron] Reminder ${reminder.id}: final reminder sent — marked 'sent'`
         );
       }
     }
