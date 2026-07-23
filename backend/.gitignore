@@ -6,3 +6,4 @@ uploads
 /.agents
 /.windsurf
 skills-lock.json
+/generated/prisma

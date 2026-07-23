@@ -1,14 +1,12 @@
-import pg from "pg";
+// connection.js
 import "dotenv/config";
+import { PrismaClient } from "./generated/prisma/client.ts";
+import { PrismaPg } from "@prisma/adapter-pg";
 
-const { Pool } = pg;
-console.log(process.env.DATABASE_URL)
-
-const pool = new Pool({
+const adapter = new PrismaPg({
   connectionString: process.env.DATABASE_URL,
-  ssl: {
-    rejectUnauthorized: false
-  }
 });
 
-export default pool;
+const prisma = new PrismaClient({ adapter });
+
+export default prisma;
