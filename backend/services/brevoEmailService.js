@@ -1,30 +1,28 @@
-import { BrevoClient } from "@getbrevo/brevo";
+// brevoEmailService.js
+import { createRequire } from "module";
 import "dotenv/config";
 
-const brevo = new BrevoClient({ apiKey: process.env.BREVO_API });
+const require = createRequire(import.meta.url);
+const { AccountApi, TransactionalEmailsApi } = require("@getbrevo/brevo");
+
+const accountApi = new AccountApi();
+accountApi.setApiKey(0, process.env.BREVO_API);
+
+const emailApi = new TransactionalEmailsApi();
+emailApi.setApiKey(0, process.env.BREVO_API);
 
 export async function testBrevoConnection() {
   try {
-    const response = await brevo.account.getAccount();
+    const response = await accountApi.getAccount();
     console.log("✅ Brevo connection successful");
-    console.log("Account info:", response);
+    console.log("Account info:", response.body);
     return true;
   } catch (error) {
-    console.error(
-      "❌ Brevo connection failed",
-      error.response?.body || error.message
-    );
+    console.error("❌ Brevo connection failed", error.response?.body || error.message);
     return false;
   }
 }
 
-/**
- * Send a warranty expiry reminder email via Brevo.
- * @param {string} toEmail - Recipient email address
- * @param {string} documentName - Original filename of the document
- * @param {string} expiryDate - Expiry date string (YYYY-MM-DD)
- * @param {number} daysRemaining - Days until expiry
- */
 export async function sendReminderEmail(toEmail, documentName, expiryDate, daysRemaining) {
   try {
     const senderEmail = process.env.BREVO_SENDER_EMAIL;
@@ -42,7 +40,7 @@ export async function sendReminderEmail(toEmail, documentName, expiryDate, daysR
       day: "numeric",
     });
 
-    const response = await brevo.transactionalEmails.sendTransacEmail({
+    const response = await emailApi.sendTransacEmail({
       subject: `${urgency}: Warranty for "${documentName}" expires in ${daysRemaining} day${daysRemaining !== 1 ? "s" : ""}`,
       htmlContent: `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
@@ -64,12 +62,9 @@ export async function sendReminderEmail(toEmail, documentName, expiryDate, daysR
     });
 
     console.log(`✅ Reminder email sent to ${toEmail} for "${documentName}" (${daysRemaining} days left)`);
-    return { success: true, messageId: response.messageId };
+    return { success: true, messageId: response.body.messageId };
   } catch (error) {
-    console.error(
-      `❌ Failed to send reminder email to ${toEmail}:`,
-      error.response?.body || error.message
-    );
+    console.error(`❌ Failed to send reminder email to ${toEmail}:`, error.response?.body || error.message);
     return { success: false, error: error.message };
   }
 }

@@ -1,4 +1,4 @@
-import pool from "../connection.js";
+import prisma from "../connection.js";
 import bcrypt from "bcryptjs";
 import { setUser } from "../services/auth.js";
 import 'dotenv/config';
@@ -12,12 +12,11 @@ async function handleSignUp(req, res) {
     }
 
     // Check if user already exists
-    const existingUser = await pool.query(
-      "SELECT * FROM users WHERE email = $1",
-      [email]
-    );
+    const existingUser = await prisma.users.findUnique({
+      where: { email }
+    });
 
-    if (existingUser.rows.length > 0) {
+    if (existingUser) {
       return res.status(409).json({ message: "Invalid Credential" });
     }
 
@@ -26,12 +25,24 @@ async function handleSignUp(req, res) {
     const passHash = bcrypt.hashSync(password, salt);
 
     // Insert the new user
-    const newUser = await pool.query(
-      "INSERT INTO users (email, password_hash) VALUES ($1, $2) RETURNING id, email",
-      [email, passHash]
-    );
+    const newUser = await prisma.users.create({
+      data: {
+        email,
+        password_hash: passHash
+      },
+      select: {
+        id: true,
+        email: true
+      }
+    });
 
-    return res.status(201).json({ message: "User registered successfully", user: { id: newUser.rows[0].id, email: newUser.rows[0].email } });
+    // Convert BigInt id to Number for JSON serialization
+    const userResponse = {
+      id: Number(newUser.id),
+      email: newUser.email
+    };
+
+    return res.status(201).json({ message: "User registered successfully", user: userResponse });
   } catch (error) {
     console.error("Signup error:", error);
     return res.status(500).json({ message: "Internal server error" });
@@ -48,16 +59,13 @@ async function handleLogin(req, res) {
     }
 
     // Check if user exists
-    const result = await pool.query(
-      "SELECT * FROM users WHERE email = $1",
-      [email]
-    );
+    const user = await prisma.users.findUnique({
+      where: { email }
+    });
 
-    if (result.rows.length === 0) {
+    if (!user) {
       return res.status(401).json({ message: "Invalid email or password" });
     }
-
-    const user = result.rows[0];
 
     // Compare password
     const isMatch = bcrypt.compareSync(password, user.password_hash);
@@ -66,8 +74,8 @@ async function handleLogin(req, res) {
       return res.status(401).json({ message: "Invalid email or password" });
     }
 
-    // Generate token
-    const token = setUser(user);
+    // Generate token — convert BigInt id to Number for JWT compatibility
+    const token = setUser({ ...user, id: Number(user.id) });
 
     if (process.env.mode == "development") {
       return res.status(200).json({ message: "Logged in!", token });
@@ -91,12 +99,18 @@ async function handleLogin(req, res) {
 async function handleGetMe(req, res) {
   try {
     const user = req.user;
-    if (!user || !user.rows || user.rows.length === 0) {
+    if (!user) {
       return res.status(401).json({ message: "User not found" });
     }
 
-    const { id, email, name } = user.rows[0];
-    return res.status(200).json({ user: { id, email, name: name || email.split("@")[0] } });
+    const { id, email, name } = user;
+    return res.status(200).json({
+      user: {
+        id: Number(id),
+        email,
+        name: name || email.split("@")[0]
+      }
+    });
   } catch (error) {
     console.error("Get me error:", error);
     return res.status(500).json({ message: "Internal server error" });

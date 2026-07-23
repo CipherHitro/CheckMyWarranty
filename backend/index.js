@@ -3,7 +3,7 @@ import cookieParser from "cookie-parser";
 import cors from "cors";
 import path from "path";
 import "dotenv/config";
-import pool from "./connection.js";
+import prisma from "./connection.js";
 import userRoute from "./routes/user.js";
 import manageDataRoute from './routes/manageData.js';
 import { authenticateUser } from './middlewares/auth.js';
@@ -31,7 +31,7 @@ app.use('/api/data', authenticateUser, manageDataRoute);
 
 app.get("/health", async (req, res) => {
   try {
-    await pool.query("SELECT 1");
+    await prisma.$queryRaw`SELECT 1`;
     res.status(200).json({ status: "DB connected" });
   } catch (err) {
     res.status(500).json({ status: "DB not connected", error: err.message });

@@ -1,5 +1,6 @@
 import { getUser } from '../services/auth.js';
-import pool from '../connection.js';
+// import pool from '../connection.js';
+import prisma from '../connection.js';
 
 async function authenticateUser(req, res, next) {
   try {
@@ -18,8 +19,10 @@ async function authenticateUser(req, res, next) {
     }
 
     // Get full user details from database
-    const user = await pool.query('SELECT * FROM USERS WHERE ID = $1', [decoded.id]);
-    
+    // const user = await pool.query('SELECT * FROM USERS WHERE ID = $1', [decoded.id]);
+    const user = await prisma.users.findUnique({
+      where : {id : decoded.id}
+    })
     if (!user) {
       return res.status(401).json({ message: "User not found" });
     }
