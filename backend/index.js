@@ -7,8 +7,6 @@ import prisma from "./connection.js";
 import userRoute from "./routes/user.js";
 import manageDataRoute from './routes/manageData.js';
 import { authenticateUser } from './middlewares/auth.js';
-import { testBrevoConnection } from './services/brevoEmailService.js';
-import { startReminderCron } from './services/reminderCron.js';
 
 const app = express();
 const port = 3000;
@@ -45,9 +43,4 @@ app.get('/', (req, res) => {
 app.listen(port, () => {
   console.log("Server is running at http://localhost:" + port);
 
-  // Test Brevo email connection on startup
-  // testBrevoConnection();
-
-  // Start the reminder cron job
-  // startReminderCron();
 });
