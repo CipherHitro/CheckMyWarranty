@@ -1,8 +1,12 @@
 import prisma from "../connection.js";
 import path from "path";
 import fs from "fs";
+import os from "os";
 import { extractWarrantyDetails } from "../services/extractWarranty.js";
+import { uploadToS3, deleteFromS3, getSignedS3Url } from "../services/s3Storage.js";
 import "dotenv/config";
+
+const isProduction = process.env.mode === "production";
 
 async function handleAddFile(req, res) {
     try {
@@ -12,8 +16,30 @@ async function handleAddFile(req, res) {
             return res.status(400).json({ message: "No file uploaded" });
         }
 
+        let fileUrl;
+        let extractionFilePath;
         const originalFilename = req.file.originalname;
-        const fileUrl = `/uploads/${req.file.filename}`;
+
+        if (isProduction) {
+            // ── Production: upload to S3 ──
+            const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
+            const ext = path.extname(originalFilename);
+            const storageName = uniqueSuffix + ext;
+
+            fileUrl = await uploadToS3(
+                req.file.buffer,
+                storageName,
+                req.file.mimetype
+            );
+
+            // Write buffer to a temp file for AI extraction
+            extractionFilePath = path.join(os.tmpdir(), storageName);
+            fs.writeFileSync(extractionFilePath, req.file.buffer);
+        } else {
+            // ── Development: file is already on disk via multer diskStorage ──
+            fileUrl = `/uploads/${req.file.filename}`;
+            extractionFilePath = path.join(import.meta.dirname, "..", fileUrl);
+        }
 
         // Step 1 — Insert with expiry_date = null
         const document = await prisma.documents.create({
@@ -26,9 +52,13 @@ async function handleAddFile(req, res) {
         });
 
         // Step 2 — Kick off AI extraction in the background
-        const extractionFilePath = path.join(import.meta.dirname, "..", fileUrl);
         extractWarrantyDetails(extractionFilePath, originalFilename)
             .then(async (extracted) => {
+                // Clean up temp file in production
+                if (isProduction) {
+                    try { fs.unlinkSync(extractionFilePath); } catch (_) {}
+                }
+
                 if (extracted && extracted.expiry_date) {
                     await prisma.documents.update({
                         where: { id: document.id },
@@ -86,6 +116,10 @@ async function handleAddFile(req, res) {
                 }
             })
             .catch((err) => {
+                // Clean up temp file in production on error too
+                if (isProduction) {
+                    try { fs.unlinkSync(extractionFilePath); } catch (_) {}
+                }
                 console.error(`[extract] Document ${document.id}: extraction error —`, err.message);
             });
 
@@ -122,10 +156,17 @@ async function handleRemoveFile(req, res) {
             return res.status(404).json({ message: "Document not found" });
         }
 
-        // Delete the file from disk
-        const filePath = path.join(import.meta.dirname, "..", doc.file_url);
-        if (fs.existsSync(filePath)) {
-            fs.unlinkSync(filePath);
+        const fileUrl = doc.file_url;
+
+        if (isProduction) {
+            // ── Production: delete from S3 ──
+            await deleteFromS3(fileUrl);
+        } else {
+            // ── Development: delete from local disk ──
+            const filePath = path.join(import.meta.dirname, "..", fileUrl);
+            if (fs.existsSync(filePath)) {
+                fs.unlinkSync(filePath);
+            }
         }
 
         // Delete the record from the database
@@ -144,21 +185,43 @@ async function handleFetchAll(req, res) {
     try {
         const userId = req.user.id;
 
-        const documents = await prisma.documents.findMany({
+        let documents = await prisma.documents.findMany({
             where: { user_id: userId },
             orderBy: { created_at: "desc" },
         });
 
         // Convert BigInt fields for JSON serialization
-        const mapped = documents.map((doc) => ({
+        documents = documents.map((doc) => ({
             ...doc,
             id: Number(doc.id),
             user_id: Number(doc.user_id),
         }));
 
+        if (isProduction) {
+            // ── Production: generate signed URLs for S3-stored documents ──
+            documents = await Promise.all(
+                documents.map(async (doc) => {
+                    // Skip old documents that were stored locally before S3 migration
+                    if (doc.file_url.startsWith("/uploads/")) {
+                        return doc;
+                    }
+                    try {
+                        const signedUrl = await getSignedS3Url(doc.file_url, 3600);
+                        return { ...doc, file_url: signedUrl };
+                    } catch (err) {
+                        console.error(
+                            `[storage] Failed to generate signed URL for doc ${doc.id}:`,
+                            err.message
+                        );
+                        return doc;
+                    }
+                })
+            );
+        }
+
         return res.status(200).json({
             message: "Documents fetched successfully",
-            documents: mapped,
+            documents,
         });
     } catch (error) {
         console.error("Error fetching documents:", error);
