@@ -77,19 +77,17 @@ async function handleLogin(req, res) {
     // Generate token — convert BigInt id to Number for JWT compatibility
     const token = setUser({ ...user, id: Number(user.id) });
 
-    if (process.env.mode == "development") {
-      return res.status(200).json({ message: "Logged in!", token });
-    } else {
-      console.log("In production");
-      res.cookie("uid", token, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === "production",
-        sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
-        path: "/",
-        maxAge: 24 * 60 * 60 * 1000,
-      });
-      return res.status(200).json({ message: "Logged in!" });
-    }
+    const isProd = process.env.NODE_ENV === "production";
+
+    res.cookie("uid", token, {
+      httpOnly: true,
+      secure: isProd,
+      sameSite: isProd ? "none" : "lax",
+      path: "/",
+      maxAge: 24 * 60 * 60 * 1000,
+    });
+
+    return res.status(200).json({ message: "Logged in!" });
   } catch (error) {
     console.error("Login error:", error);
     return res.status(500).json({ message: "Internal server error" });

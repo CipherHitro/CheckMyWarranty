@@ -1,5 +1,4 @@
 import { createContext, useContext, useState, useEffect } from "react";
-import Cookies from "js-cookie";
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3000/api";
 const MODE = import.meta.env.VITE_MODE;
@@ -31,8 +30,6 @@ export const AuthProvider = ({ children }) => {
           const data = await res.json();
           setUser(data.user);
         } else {
-          // No valid session — clear any stale dev cookie
-          Cookies.remove("uid", { path: "/" });
           setUser(null);
         }
       } catch {
@@ -67,12 +64,7 @@ export const AuthProvider = ({ children }) => {
       throw new Error(data.message || "Login failed");
     }
 
-    // In development, backend sends the token in response — store as cookie
-    if (MODE === "development" && data.token) {
-      Cookies.set("uid", data.token, { path: "/", expires: 1 });
-    }
-
-    // Fetch user info from the /me endpoint (works in both modes)
+    // Fetch user info from the /me endpoint (cookie is set by backend)
     const meRes = await fetch(`${API_URL}/user/me`, {
       method: "GET",
       credentials: "include",
@@ -100,6 +92,7 @@ export const AuthProvider = ({ children }) => {
     const res = await fetch(`${API_URL}/user/signup`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
+      credentials: "include",
       body: JSON.stringify({ email, password }),
     });
 
@@ -130,8 +123,6 @@ export const AuthProvider = ({ children }) => {
       // Ignore network errors on logout
     }
 
-    // Also clear non-httpOnly dev cookie
-    Cookies.remove("uid", { path: "/" });
     setUser(null);
   };
 
