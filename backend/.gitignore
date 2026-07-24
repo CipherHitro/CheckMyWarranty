@@ -7,3 +7,4 @@ uploads
 /.windsurf
 skills-lock.json
 /generated/prisma
+docker-compose.yml

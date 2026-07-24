@@ -1,0 +1,13 @@
+.claude
+.agents
+.windsurf
+**/skills-lock.json
+node_modules
+.git
+.env
+generated
+uploads/*
+*.md
+.github
+dist
+Dockerfile
