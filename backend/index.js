@@ -9,6 +9,7 @@ import manageDataRoute from './routes/manageData.js';
 import { authenticateUser } from './middlewares/auth.js';
 
 const app = express();
+app.set("trust proxy", 1);
 const port = 3000;
 
 //Middlewares
