@@ -13,8 +13,14 @@ app.set("trust proxy", 1);
 const port = 3000;
 
 //Middlewares
+const allowedOrigins = [
+  process.env.FRONTEND_URL,
+  "http://localhost:5173",
+  "https://checkmywarranty.vercel.app",
+].filter(Boolean);
+
 app.use(cors({
-  origin: process.env.FRONTEND_URL || "http://localhost:5173",
+  origin: allowedOrigins,
   credentials: true,
 }));
 
