@@ -77,11 +77,13 @@ async function handleLogin(req, res) {
     // Generate token — convert BigInt id to Number for JWT compatibility
     const token = setUser({ ...user, id: Number(user.id) });
 
-    const isProd = process.env.NODE_ENV === "production";
+    const isProd = process.env.mode === "production";
+    // If behind a proxy (e.g. AWS ALB), trust the X-Forwarded-Proto header
+    const isSecure = req.secure || req.headers["x-forwarded-proto"] === "https";
 
     res.cookie("uid", token, {
       httpOnly: true,
-      secure: isProd,
+      secure: isSecure,
       sameSite: isProd ? "none" : "lax",
       path: "/",
       maxAge: 24 * 60 * 60 * 1000,
@@ -116,10 +118,12 @@ async function handleGetMe(req, res) {
 }
 
 function handleLogout(req, res) {
+  const isProd = process.env.mode === "production";
+  const isSecure = req.secure || req.headers["x-forwarded-proto"] === "https";
   res.clearCookie("uid", {
     httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+    secure: isSecure,
+    sameSite: isProd ? "none" : "lax",
     path: "/",
   });
   return res.status(200).json({ message: "Logged out successfully" });

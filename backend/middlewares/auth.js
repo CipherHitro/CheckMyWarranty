@@ -19,8 +19,9 @@ async function authenticateUser(req, res, next) {
     }
 
     // Get full user details from database
+    // Convert decoded.id (Number from JWT) to BigInt for Prisma query
     const user = await prisma.users.findUnique({
-      where : {id : decoded.id}
+      where : {id : BigInt(decoded.id)}
     })
     if (!user) {
       return res.status(401).json({ message: "User not found" });
