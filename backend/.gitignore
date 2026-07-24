@@ -8,3 +8,5 @@ uploads
 skills-lock.json
 /generated/prisma
 docker-compose.yml
+private
+private.pub
