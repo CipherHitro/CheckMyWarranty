@@ -1,6 +1,6 @@
 import { getUser } from '../services/auth.js';
-// import pool from '../connection.js';
 import prisma from '../connection.js';
+import logger from '../logger.js';
 
 async function authenticateUser(req, res, next) {
   try {
@@ -8,6 +8,7 @@ async function authenticateUser(req, res, next) {
     const token = req.cookies?.uid;
     
     if (!token) {
+      logger.warn("Auth — no token provided");
       return res.status(401).json({ message: "No authentication token provided" });
     }
 
@@ -15,6 +16,7 @@ async function authenticateUser(req, res, next) {
     const decoded = getUser(token);
     
     if (!decoded) {
+      logger.warn("Auth — invalid or expired token");
       return res.status(401).json({ message: "Invalid or expired token" });
     }
 
@@ -24,14 +26,16 @@ async function authenticateUser(req, res, next) {
       where : {id : BigInt(decoded.id)}
     })
     if (!user) {
+      logger.warn({ userId: decoded.id }, "Auth — user not found in database");
       return res.status(401).json({ message: "User not found" });
     }
 
     // Attach user to request
     req.user = user;
+    logger.debug({ userId: Number(user.id) }, "Auth — user authenticated");
     next();
   } catch (error) {
-    console.error('Authentication error:', error);
+    logger.error({ err: error }, 'Authentication error');
     return res.status(500).json({ message: "Authentication failed" });
   }
 }

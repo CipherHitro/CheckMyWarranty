@@ -1,5 +1,6 @@
 // brevoEmailService.js
 import { createRequire } from "module";
+import logger from "../logger.js";
 import "dotenv/config";
 
 const require = createRequire(import.meta.url);
@@ -14,11 +15,10 @@ emailApi.setApiKey(0, process.env.BREVO_API);
 export async function testBrevoConnection() {
   try {
     const response = await accountApi.getAccount();
-    console.log("✅ Brevo connection successful");
-    console.log("Account info:", response.body);
+    logger.info("Brevo connection successful");
     return true;
   } catch (error) {
-    console.error("❌ Brevo connection failed", error.response?.body || error.message);
+    logger.error({ err: error.response?.body || error.message }, "Brevo connection failed");
     return false;
   }
 }
@@ -61,10 +61,13 @@ export async function sendReminderEmail(toEmail, documentName, expiryDate, daysR
       to: [{ email: toEmail }],
     });
 
-    console.log(`✅ Reminder email sent to ${toEmail} for "${documentName}" (${daysRemaining} days left)`);
+    logger.info({ toEmail, documentName, daysRemaining }, "Reminder email sent");
     return { success: true, messageId: response.body.messageId };
   } catch (error) {
-    console.error(`❌ Failed to send reminder email to ${toEmail}:`, error.response?.body || error.message);
+    logger.error(
+      { err: error.response?.body || error.message, toEmail, documentName },
+      "Failed to send reminder email"
+    );
     return { success: false, error: error.message };
   }
 }

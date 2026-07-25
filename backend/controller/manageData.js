@@ -2,6 +2,7 @@ import prisma from "../connection.js";
 import path from "path";
 import fs from "fs";
 import os from "os";
+import logger from "../logger.js";
 import { extractWarrantyDetails } from "../services/extractWarranty.js";
 import { uploadToS3, deleteFromS3, getSignedS3Url } from "../services/s3Storage.js";
 import { createReminder } from "../services/reminderService.js";
@@ -36,10 +37,14 @@ async function handleAddFile(req, res) {
             // Write buffer to a temp file for AI extraction
             extractionFilePath = path.join(os.tmpdir(), storageName);
             fs.writeFileSync(extractionFilePath, req.file.buffer);
+
+            logger.debug({ storageName, userId: Number(userId) }, "File uploaded to S3");
         } else {
             // ── Development: file is already on disk via multer diskStorage ──
             fileUrl = `/uploads/${req.file.filename}`;
             extractionFilePath = path.join(import.meta.dirname, "..", fileUrl);
+
+            logger.debug({ filename: req.file.filename, userId: Number(userId) }, "File saved locally");
         }
 
         // Step 1 — Insert with expiry_date = null
@@ -51,6 +56,8 @@ async function handleAddFile(req, res) {
                 expiry_date: null,
             },
         });
+
+        logger.info({ documentId: Number(document.id), originalFilename }, "Document record created");
 
         // Step 2 — Kick off AI extraction in the background
         extractWarrantyDetails(extractionFilePath, originalFilename)
@@ -67,22 +74,24 @@ async function handleAddFile(req, res) {
                         where: { id: document.id },
                         data: { expiry_date: expiryDateObj },
                     });
-                    console.log(
-                        `[extract] Document ${document.id}: expiry_date updated to ${extracted.expiry_date}`
+                    logger.info(
+                        { documentId: Number(document.id), expiryDate: extracted.expiry_date },
+                        "Expiry date extracted and updated"
                     );
 
                     // ── Create reminder in the DB ──
                     try {
                         await createReminder(userId, document.id, extracted.expiry_date);
                     } catch (reminderErr) {
-                        console.error(
-                            `[reminder] Document ${document.id}: failed to create reminder —`,
-                            reminderErr.message
+                        logger.error(
+                            { err: reminderErr, documentId: Number(document.id) },
+                            "Failed to create reminder"
                         );
                     }
                 } else {
-                    console.log(
-                        `[extract] Document ${document.id}: could not extract expiry date`
+                    logger.warn(
+                        { documentId: Number(document.id) },
+                        "Could not extract expiry date from document"
                     );
                 }
             })
@@ -91,7 +100,10 @@ async function handleAddFile(req, res) {
                 if (isProduction) {
                     try { fs.unlinkSync(extractionFilePath); } catch (_) {}
                 }
-                console.error(`[extract] Document ${document.id}: extraction error —`, err.message);
+                logger.error(
+                    { err, documentId: Number(document.id) },
+                    "Extraction error"
+                );
             });
 
         // Respond immediately (extraction runs in background)
@@ -104,7 +116,7 @@ async function handleAddFile(req, res) {
             },
         });
     } catch (error) {
-        console.error("Error uploading file:", error);
+        logger.error({ err: error }, "Error uploading file");
         return res.status(500).json({ message: "Failed to upload file" });
     }
 }
@@ -124,6 +136,7 @@ async function handleRemoveFile(req, res) {
         });
 
         if (!doc) {
+            logger.warn({ documentId, userId: Number(userId) }, "Remove — document not found");
             return res.status(404).json({ message: "Document not found" });
         }
 
@@ -132,12 +145,14 @@ async function handleRemoveFile(req, res) {
         if (isProduction) {
             // ── Production: delete from S3 ──
             await deleteFromS3(fileUrl);
+            logger.debug({ documentId, fileUrl }, "File deleted from S3");
         } else {
             // ── Development: delete from local disk ──
             const filePath = path.join(import.meta.dirname, "..", fileUrl);
             if (fs.existsSync(filePath)) {
                 fs.unlinkSync(filePath);
             }
+            logger.debug({ documentId, fileUrl }, "File deleted from local disk");
         }
 
         // Delete the record from the database
@@ -145,9 +160,10 @@ async function handleRemoveFile(req, res) {
             where: { id: BigInt(documentId) },
         });
 
+        logger.info({ documentId, userId: Number(userId) }, "Document removed");
         return res.status(200).json({ message: "File removed successfully" });
     } catch (error) {
-        console.error("Error removing file:", error);
+        logger.error({ err: error, documentId: req.body.documentId }, "Error removing file");
         return res.status(500).json({ message: "Failed to remove file" });
     }
 }
@@ -168,12 +184,13 @@ async function handleFetchAll(req, res) {
             user_id: Number(doc.user_id),
         }));
 
+        logger.debug({ userId: Number(userId), count: mapped.length }, "Documents fetched");
         return res.status(200).json({
             message: "Documents fetched successfully",
             documents: mapped,
         });
     } catch (error) {
-        console.error("Error fetching documents:", error);
+        logger.error({ err: error }, "Error fetching documents");
         return res.status(500).json({ message: "Failed to fetch documents" });
     }
 }
@@ -192,6 +209,7 @@ async function handleFetchOne(req, res) {
         });
 
         if (!doc) {
+            logger.warn({ documentId, userId: Number(userId) }, "FetchOne — document not found");
             return res.status(404).json({ message: "Document not found" });
         }
 
@@ -200,6 +218,7 @@ async function handleFetchOne(req, res) {
         // Only generate signed URL for S3-stored files in production
         if (isProduction && !fileUrl.startsWith("/uploads/")) {
             fileUrl = await getSignedS3Url(fileUrl, 600); // 10 minutes expiry
+            logger.debug({ documentId }, "Signed URL generated for document");
         }
 
         return res.status(200).json({
@@ -212,7 +231,7 @@ async function handleFetchOne(req, res) {
             },
         });
     } catch (error) {
-        console.error("Error fetching document:", error);
+        logger.error({ err: error, documentId: req.params.documentId }, "Error fetching document");
         return res.status(500).json({ message: "Failed to fetch document" });
     }
 }

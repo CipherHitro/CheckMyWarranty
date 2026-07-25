@@ -1,4 +1,5 @@
 import prisma from "../connection.js";
+import logger from "../logger.js";
 
 /**
  * Create a reminder for a document based on its expiry date.
@@ -17,8 +18,9 @@ async function createReminder(userId, documentId, expiryDate) {
   const expiry = new Date(expiryDate);
 
   if (expiry <= now) {
-    console.log(
-      `[reminder] Document ${documentId}: expiry already passed — skipping reminder`
+    logger.info(
+      { documentId: Number(documentId) },
+      "Reminder skipped — expiry already passed"
     );
     return;
   }
@@ -45,8 +47,13 @@ async function createReminder(userId, documentId, expiryDate) {
     },
   });
 
-  console.log(
-    `[reminder] Document ${documentId}: reminder created for ${remindAt.toISOString()} (${daysRemaining} days until expiry)`
+  logger.info(
+    {
+      documentId: Number(documentId),
+      remindAt: remindAt.toISOString(),
+      daysRemaining,
+    },
+    "Reminder created"
   );
 }
 

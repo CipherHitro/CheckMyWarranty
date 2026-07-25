@@ -4,6 +4,8 @@ import cors from "cors";
 import path from "path";
 import "dotenv/config";
 import prisma from "./connection.js";
+import logger from "./logger.js";
+import pinoHttp from "pino-http";
 import userRoute from "./routes/user.js";
 import manageDataRoute from './routes/manageData.js';
 import { authenticateUser } from './middlewares/auth.js';
@@ -11,6 +13,32 @@ import { authenticateUser } from './middlewares/auth.js';
 const app = express();
 app.set("trust proxy", 1);
 const port = 3000;
+
+const isProduction = process.env.mode === "production";
+
+// HTTP request logging
+if (isProduction) {
+  // Production: full verbose logging with request/response details
+  app.use(pinoHttp({
+    logger,
+    redact: {
+      paths: ["req.headers.cookie", "req.headers.authorization", "body.password", "body.token"],
+      censor: "[REDACTED]",
+    },
+  }));
+} else {
+  // Development: one-line summary only — no req/res objects
+  app.use((req, res, next) => {
+    const start = Date.now();
+    res.on("finish", () => {
+      if (req.url === "/health") return;
+      const responseTime = Date.now() - start;
+      const level = res.statusCode >= 500 ? "error" : res.statusCode >= 400 ? "warn" : "info";
+      logger[level]("%s %s %s %dms", req.method, req.url, res.statusCode, responseTime);
+    });
+    next();
+  });
+}
 
 //Middlewares
 const allowedOrigins = [
@@ -39,6 +67,7 @@ app.get("/health", async (req, res) => {
     await prisma.$queryRaw`SELECT 1`;
     res.status(200).json({ status: "DB connected" });
   } catch (err) {
+    logger.error({ err }, "Health check — database not connected");
     res.status(500).json({ status: "DB not connected", error: err.message });
   }
 });
@@ -48,6 +77,5 @@ app.get('/', (req, res) => {
 });
 
 app.listen(port, () => {
-  console.log("Server is running at http://localhost:" + port);
-
+  logger.info({ port }, "Server started");
 });

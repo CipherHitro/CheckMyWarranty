@@ -2,6 +2,7 @@ import fs from "fs";
 import path from "path";
 import { PDFParse } from "pdf-parse";
 import Groq from "groq-sdk";
+import logger from "../logger.js";
 import "dotenv/config";
 
 const groq = new Groq({ apiKey: process.env.GROQ_API });
@@ -70,7 +71,7 @@ async function extractFromScannedPDF(filePath) {
     });
 
     if (!screenshots.pages.length || !screenshots.pages[0].dataUrl) {
-        console.error("[extract] Could not render PDF page to image");
+        logger.error("Could not render PDF page to image");
         return null;
     }
 
@@ -153,7 +154,7 @@ function parseLLMResponse(raw) {
             expiry_date: parsed.expiry_date || null,
         };
     } catch (err) {
-        console.error("Failed to parse LLM response:", raw, err.message);
+        logger.error({ err, rawResponse: raw }, "Failed to parse LLM response");
         return null;
     }
 }
@@ -173,10 +174,10 @@ async function extractWarrantyDetails(filePath, originalFilename) {
             const text = await extractPdfText(filePath);
 
             if (text.length >= MIN_TEXT_LENGTH) {
-                console.log(`[extract] PDF has ${text.length} chars — using text model`);
+                logger.debug({ charCount: text.length }, "PDF has sufficient text — using text model");
                 return await extractFromText(text);
             } else {
-                console.log(`[extract] PDF text too short (${text.length} chars) — using vision model for scanned PDF`);
+                logger.debug({ charCount: text.length }, "PDF text too short — using vision model for scanned PDF");
                 return await extractFromScannedPDF(filePath);
             }
         } else if (isImg) {
@@ -187,14 +188,14 @@ async function extractWarrantyDetails(filePath, originalFilename) {
                 ".webp": "image/webp",
                 ".gif": "image/gif",
             };
-            console.log("[extract] Image file — using vision model");
+            logger.debug("Image file — using vision model");
             return await extractFromImage(filePath, mimeMap[ext] || "image/jpeg");
         } else {
-            console.log("[extract] Unsupported file type for extraction:", ext);
+            logger.warn({ ext }, "Unsupported file type for extraction");
             return null;
         }
     } catch (err) {
-        console.error("[extract] Extraction failed:", err.message);
+        logger.error({ err }, "Extraction failed");
         return null;
     }
 }

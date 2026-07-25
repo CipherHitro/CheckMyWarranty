@@ -48,19 +48,6 @@ const Dashboard = () => {
     fetchDocuments();
   }, [fetchDocuments]);
 
-  // ── Poll for pending extractions ──────────────────────────────
-  // If any document still has expiry_date === null, re-fetch every 4s
-  useEffect(() => {
-    const hasPending = documents.some((d) => !d.expiry_date);
-    if (!hasPending) return;
-
-    const interval = setInterval(() => {
-      fetchDocuments();
-    }, 4000);
-
-    return () => clearInterval(interval);
-  }, [documents, fetchDocuments]);
-
   // ── Upload file to backend ────────────────────────────────────
   const uploadFile = async (file) => {
     const formData = new FormData();
@@ -309,24 +296,14 @@ const Dashboard = () => {
                 key={doc.id}
                 className="group relative bg-white/70 backdrop-blur-sm rounded-xl border border-surface-200 overflow-hidden hover:shadow-md hover:shadow-primary-200/20 transition-all duration-200"
               >
-                {/* Preview thumbnail */}
+                {/* Preview thumbnail — show icon only, no actual file loading */}
                 <div className="relative h-44 bg-surface-50 flex items-center justify-center overflow-hidden">
-                  {isImage(doc) ? (
-                    <img
-                      src={`${BACKEND_URL}${doc.file_url.startsWith("/uploads/") ? doc.file_url : ""}`}
-                      alt={doc.original_filename}
-                      className="w-full h-full object-cover"
-                      onError={(e) => {
-                        // If direct image fails (e.g. S3 key), hide it gracefully
-                        e.target.style.display = "none";
-                      }}
-                    />
-                  ) : (
-                    <div className="flex flex-col items-center gap-2 text-surface-400">
-                      <FileText size={40} />
-                      <span className="text-xs font-medium uppercase">PDF</span>
-                    </div>
-                  )}
+                  <div className="flex flex-col items-center gap-2 text-surface-400">
+                    {isImage(doc) ? <Image size={40} /> : <FileText size={40} />}
+                    <span className="text-xs font-medium uppercase">
+                      {isImage(doc) ? "IMAGE" : "PDF"}
+                    </span>
+                  </div>
 
                   {/* Action overlay — always visible on mobile, hover-only on desktop */}
                   <div className="absolute inset-0 pointer-events-none bg-gradient-to-t from-surface-900/50 to-transparent sm:from-transparent sm:bg-surface-900/0 sm:group-hover:bg-surface-900/40 transition-all duration-200 flex items-end justify-center pb-3 sm:items-center sm:pb-0 gap-2 opacity-100 sm:opacity-0 sm:group-hover:opacity-100">

@@ -1,12 +1,14 @@
 import prisma from "../connection.js";
 import bcrypt from "bcryptjs";
 import { setUser } from "../services/auth.js";
+import logger from "../logger.js";
 import 'dotenv/config';
 
 async function handleSignUp(req, res) {
   try {
     const { email, password } = req.body;
-    console.log("In handle sign up")
+    logger.debug({ email }, "Signup attempt");
+
     if (!email || !password) {
       return res.status(400).json({ message: "Email and password are required" });
     }
@@ -17,6 +19,7 @@ async function handleSignUp(req, res) {
     });
 
     if (existingUser) {
+      logger.warn({ email }, "Signup — email already exists");
       return res.status(409).json({ message: "Invalid Credential" });
     }
 
@@ -42,9 +45,10 @@ async function handleSignUp(req, res) {
       email: newUser.email
     };
 
+    logger.info({ email, userId: userResponse.id }, "User registered successfully");
     return res.status(201).json({ message: "User registered successfully", user: userResponse });
   } catch (error) {
-    console.error("Signup error:", error);
+    logger.error({ err: error }, "Signup error");
     return res.status(500).json({ message: "Internal server error" });
   }
 }
@@ -52,7 +56,7 @@ async function handleSignUp(req, res) {
 async function handleLogin(req, res) {
   try {
     const { email, password } = req.body;
-    console.log("In handle log up")
+    logger.debug({ email }, "Login attempt");
 
     if (!email || !password) {
       return res.status(400).json({ message: "Email and password are required" });
@@ -64,6 +68,7 @@ async function handleLogin(req, res) {
     });
 
     if (!user) {
+      logger.warn({ email }, "Login — user not found");
       return res.status(401).json({ message: "Invalid email or password" });
     }
 
@@ -71,6 +76,7 @@ async function handleLogin(req, res) {
     const isMatch = bcrypt.compareSync(password, user.password_hash);
 
     if (!isMatch) {
+      logger.warn({ email }, "Login — incorrect password");
       return res.status(401).json({ message: "Invalid email or password" });
     }
 
@@ -89,9 +95,10 @@ async function handleLogin(req, res) {
       maxAge: 24 * 60 * 60 * 1000,
     });
 
+    logger.info({ email, userId: Number(user.id) }, "Login successful");
     return res.status(200).json({ message: "Logged in!" });
   } catch (error) {
-    console.error("Login error:", error);
+    logger.error({ err: error }, "Login error");
     return res.status(500).json({ message: "Internal server error" });
   }
 }
@@ -100,10 +107,12 @@ async function handleGetMe(req, res) {
   try {
     const user = req.user;
     if (!user) {
+      logger.warn("GetMe — no user in request");
       return res.status(401).json({ message: "User not found" });
     }
 
     const { id, email, name } = user;
+    logger.debug({ userId: Number(id), email }, "GetMe — user fetched");
     return res.status(200).json({
       user: {
         id: Number(id),
@@ -112,7 +121,7 @@ async function handleGetMe(req, res) {
       }
     });
   } catch (error) {
-    console.error("Get me error:", error);
+    logger.error({ err: error }, "Get me error");
     return res.status(500).json({ message: "Internal server error" });
   }
 }
@@ -126,6 +135,7 @@ function handleLogout(req, res) {
     sameSite: isProd ? "none" : "lax",
     path: "/",
   });
+  logger.info("User logged out");
   return res.status(200).json({ message: "Logged out successfully" });
 }
 
