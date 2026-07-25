@@ -7,3 +7,15 @@ services:
       - "3000:3000"
     env_file: .env
     restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: redis-checkmywarranty
+    ports:
+      - "6379:6379" # Exposes Redis to localhost for RedisInsight
+    volumes:
+      - redis-data:/data
+    command: redis-server --appendonly yes # Enables data persistence
+
+volumes:
+  redis-data:
