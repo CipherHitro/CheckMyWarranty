@@ -5,7 +5,7 @@ import os from "os";
 import logger from "../logger.js";
 import { extractWarrantyDetails } from "../services/extractWarranty.js";
 import { uploadToS3, deleteFromS3, getSignedS3Url } from "../services/s3Storage.js";
-import { createReminder } from "../services/reminderService.js";
+import { createReminders } from "../services/reminderService.js";
 import "dotenv/config";
 
 const isProduction = process.env.mode === "production";
@@ -79,13 +79,19 @@ async function handleAddFile(req, res) {
                         "Expiry date extracted and updated"
                     );
 
-                    // ── Create reminder in the DB ──
+                    // ── Create reminders in the DB and schedule email jobs ──
                     try {
-                        await createReminder(userId, document.id, extracted.expiry_date);
+                        await createReminders(
+                            userId,
+                            document.id,
+                            req.user.email,
+                            originalFilename,
+                            extracted.expiry_date
+                        );
                     } catch (reminderErr) {
                         logger.error(
                             { err: reminderErr, documentId: Number(document.id) },
-                            "Failed to create reminder"
+                            "Failed to create reminders"
                         );
                     }
                 } else {
