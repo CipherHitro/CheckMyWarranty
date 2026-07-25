@@ -10,6 +10,7 @@ import userRoute from "./routes/user.js";
 import manageDataRoute from './routes/manageData.js';
 import { authenticateUser } from './middlewares/auth.js';
 import { reminderWorker } from './workers/reminderWorker.js';
+import { testBrevoConnection } from "./services/brevoEmailService.js";
 
 const app = express();
 app.set("trust proxy", 1);
@@ -80,4 +81,5 @@ app.get('/', (req, res) => {
 app.listen(port, () => {
   logger.info({ port }, "Server started");
   logger.info("Reminder worker started — listening for email jobs");
+  testBrevoConnection();
 });
