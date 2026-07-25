@@ -185,43 +185,21 @@ async function handleFetchAll(req, res) {
     try {
         const userId = req.user.id;
 
-        let documents = await prisma.documents.findMany({
+        const documents = await prisma.documents.findMany({
             where: { user_id: userId },
             orderBy: { created_at: "desc" },
         });
 
         // Convert BigInt fields for JSON serialization
-        documents = documents.map((doc) => ({
+        const mapped = documents.map((doc) => ({
             ...doc,
             id: Number(doc.id),
             user_id: Number(doc.user_id),
         }));
 
-        if (isProduction) {
-            // ── Production: generate signed URLs for S3-stored documents ──
-            documents = await Promise.all(
-                documents.map(async (doc) => {
-                    // Skip old documents that were stored locally before S3 migration
-                    if (doc.file_url.startsWith("/uploads/")) {
-                        return doc;
-                    }
-                    try {
-                        const signedUrl = await getSignedS3Url(doc.file_url, 3600);
-                        return { ...doc, file_url: signedUrl };
-                    } catch (err) {
-                        console.error(
-                            `[storage] Failed to generate signed URL for doc ${doc.id}:`,
-                            err.message
-                        );
-                        return doc;
-                    }
-                })
-            );
-        }
-
         return res.status(200).json({
             message: "Documents fetched successfully",
-            documents,
+            documents: mapped,
         });
     } catch (error) {
         console.error("Error fetching documents:", error);
@@ -229,8 +207,48 @@ async function handleFetchAll(req, res) {
     }
 }
 
+async function handleFetchOne(req, res) {
+    try {
+        const userId = req.user.id;
+        const { documentId } = req.params;
+
+        if (!documentId) {
+            return res.status(400).json({ message: "Document ID is required" });
+        }
+
+        const doc = await prisma.documents.findFirst({
+            where: { id: BigInt(documentId), user_id: userId },
+        });
+
+        if (!doc) {
+            return res.status(404).json({ message: "Document not found" });
+        }
+
+        let fileUrl = doc.file_url;
+
+        // Only generate signed URL for S3-stored files in production
+        if (isProduction && !fileUrl.startsWith("/uploads/")) {
+            fileUrl = await getSignedS3Url(fileUrl, 600); // 10 minutes expiry
+        }
+
+        return res.status(200).json({
+            message: "Document fetched successfully",
+            document: {
+                ...doc,
+                id: Number(doc.id),
+                user_id: Number(doc.user_id),
+                file_url: fileUrl,
+            },
+        });
+    } catch (error) {
+        console.error("Error fetching document:", error);
+        return res.status(500).json({ message: "Failed to fetch document" });
+    }
+}
+
 export {
     handleAddFile,
     handleRemoveFile,
     handleFetchAll,
+    handleFetchOne,
 };

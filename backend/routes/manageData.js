@@ -2,7 +2,7 @@ import express from 'express';
 import multer from 'multer';
 import path from 'path';
 import 'dotenv/config';
-import { handleAddFile, handleRemoveFile, handleFetchAll } from '../controller/manageData.js';
+import { handleAddFile, handleRemoveFile, handleFetchAll, handleFetchOne } from '../controller/manageData.js';
 
 const router = express.Router();
 
@@ -32,5 +32,6 @@ if (isProduction) {
 router.post('/upload', upload.single('file'), handleAddFile);
 router.delete('/remove', handleRemoveFile);
 router.get('/getAll', handleFetchAll);
+router.get('/getOne/:documentId', handleFetchOne);
 
 export default router;

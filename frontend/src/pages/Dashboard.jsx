@@ -168,9 +168,29 @@ const Dashboard = () => {
     e.target.value = "";
   };
 
-  // ── Helpers ───────────────────────────────────────────────────
-  const getFullUrl = (fileUrl) =>
-    fileUrl.startsWith("http") ? fileUrl : `${BACKEND_URL}${fileUrl}`;
+  // ── Open file preview in new tab ─────────────────────────────
+  const openPreview = (doc) => {
+    // For local files (/uploads/...) — construct URL directly (synchronous, no popup blocker)
+    if (doc.file_url.startsWith("/uploads/")) {
+      window.open(`${BACKEND_URL}${doc.file_url}`, "_blank");
+      return;
+    }
+
+    // For S3 files — fetch a signed URL on demand, then open
+    fetch(`${API_URL}/data/getOne/${doc.id}`, {
+      credentials: "include",
+    })
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.document?.file_url) {
+          window.open(data.document.file_url, "_blank");
+        }
+      })
+      .catch(() => {
+        // Fallback: open the raw URL if fetch fails
+        window.open(doc.file_url, "_blank");
+      });
+  };
 
   const isImage = (doc) => {
     const name = doc.original_filename?.toLowerCase() || "";
@@ -293,9 +313,13 @@ const Dashboard = () => {
                 <div className="relative h-44 bg-surface-50 flex items-center justify-center overflow-hidden">
                   {isImage(doc) ? (
                     <img
-                      src={getFullUrl(doc.file_url)}
+                      src={`${BACKEND_URL}${doc.file_url.startsWith("/uploads/") ? doc.file_url : ""}`}
                       alt={doc.original_filename}
                       className="w-full h-full object-cover"
+                      onError={(e) => {
+                        // If direct image fails (e.g. S3 key), hide it gracefully
+                        e.target.style.display = "none";
+                      }}
                     />
                   ) : (
                     <div className="flex flex-col items-center gap-2 text-surface-400">
@@ -306,16 +330,16 @@ const Dashboard = () => {
 
                   {/* Action overlay — always visible on mobile, hover-only on desktop */}
                   <div className="absolute inset-0 pointer-events-none bg-gradient-to-t from-surface-900/50 to-transparent sm:from-transparent sm:bg-surface-900/0 sm:group-hover:bg-surface-900/40 transition-all duration-200 flex items-end justify-center pb-3 sm:items-center sm:pb-0 gap-2 opacity-100 sm:opacity-0 sm:group-hover:opacity-100">
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        window.open(getFullUrl(doc.file_url), "_blank");
-                      }}
-                      className="pointer-events-auto p-2 bg-white/90 rounded-xl text-surface-700 hover:bg-white transition-colors cursor-pointer"
-                      title="Open in new tab"
-                    >
-                      <Eye size={18} />
-                    </button>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  openPreview(doc);
+                }}
+                className="pointer-events-auto p-2 bg-white/90 rounded-xl text-surface-700 hover:bg-white transition-colors cursor-pointer"
+                title="Preview"
+              >
+                <Eye size={18} />
+              </button>
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
