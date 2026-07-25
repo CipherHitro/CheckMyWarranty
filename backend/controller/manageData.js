@@ -4,6 +4,7 @@ import fs from "fs";
 import os from "os";
 import { extractWarrantyDetails } from "../services/extractWarranty.js";
 import { uploadToS3, deleteFromS3, getSignedS3Url } from "../services/s3Storage.js";
+import { createReminder } from "../services/reminderService.js";
 import "dotenv/config";
 
 const isProduction = process.env.mode === "production";
@@ -60,9 +61,11 @@ async function handleAddFile(req, res) {
                 }
 
                 if (extracted && extracted.expiry_date) {
+                    // Convert date string (YYYY-MM-DD) to a Date object for Prisma
+                    const expiryDateObj = new Date(extracted.expiry_date + "T00:00:00.000Z");
                     await prisma.documents.update({
                         where: { id: document.id },
-                        data: { expiry_date: extracted.expiry_date },
+                        data: { expiry_date: expiryDateObj },
                     });
                     console.log(
                         `[extract] Document ${document.id}: expiry_date updated to ${extracted.expiry_date}`
@@ -70,39 +73,7 @@ async function handleAddFile(req, res) {
 
                     // ── Create reminder in the DB ──
                     try {
-                        const now = new Date();
-                        const expiryDate = new Date(extracted.expiry_date);
-
-                        if (expiryDate <= now) {
-                            console.log(
-                                `[reminder] Document ${document.id}: expiry already passed — skipping reminder`
-                            );
-                        } else {
-                            const msPerDay = 24 * 60 * 60 * 1000;
-                            const daysRemaining = Math.ceil((expiryDate - now) / msPerDay);
-
-                            let remindAt;
-                            if (daysRemaining >= 7) {
-                                remindAt = new Date(expiryDate);
-                                remindAt.setDate(remindAt.getDate() - 7);
-                            } else if (daysRemaining >= 3) {
-                                remindAt = new Date(expiryDate);
-                                remindAt.setDate(remindAt.getDate() - 3);
-                            } else {
-                                remindAt = now;
-                            }
-
-                            await prisma.reminders.create({
-                                data: {
-                                    user_id: userId,
-                                    document_id: document.id,
-                                    remind_at: remindAt,
-                                },
-                            });
-                            console.log(
-                                `[reminder] Document ${document.id}: reminder created for ${remindAt.toISOString()} (${daysRemaining} days until expiry)`
-                            );
-                        }
+                        await createReminder(userId, document.id, extracted.expiry_date);
                     } catch (reminderErr) {
                         console.error(
                             `[reminder] Document ${document.id}: failed to create reminder —`,
