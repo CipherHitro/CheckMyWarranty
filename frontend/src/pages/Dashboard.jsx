@@ -48,6 +48,32 @@ const Dashboard = () => {
     fetchDocuments();
   }, [fetchDocuments]);
 
+  // ── SSE connection for real-time extraction updates ───────────
+  useEffect(() => {
+    const eventSource = new EventSource(`${API_URL}/data/events`, {
+      withCredentials: true,
+    });
+
+    eventSource.addEventListener("extraction-complete", (e) => {
+      // Silently re-fetch to update the document list with the extracted date
+      fetchDocuments();
+    });
+
+    eventSource.addEventListener("extraction-no-date", (e) => {
+      // Silently re-fetch so the "Extracting…" state updates
+      fetchDocuments();
+    });
+
+    eventSource.onerror = () => {
+      // SSE connection closed or failed — this is expected after extraction completes
+      eventSource.close();
+    };
+
+    return () => {
+      eventSource.close();
+    };
+  }, [fetchDocuments]);
+
   // ── Upload file to backend ────────────────────────────────────
   const uploadFile = async (file) => {
     const formData = new FormData();
@@ -347,7 +373,7 @@ const Dashboard = () => {
                         ? isExpired(doc.expiry_date)
                           ? <span className="text-red-500 font-semibold">Expired</span>
                           : `Expires ${formatDate(doc.expiry_date)}`
-                        : <span className="text-amber-500 animate-pulse">Extracting…</span>
+                        : null
                       }
                     </p>
                   </div>

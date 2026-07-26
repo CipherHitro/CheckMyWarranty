@@ -6,6 +6,7 @@ import logger from "../logger.js";
 import { extractWarrantyDetails } from "../services/extractWarranty.js";
 import { uploadToS3, deleteFromS3, getSignedS3Url } from "../services/s3Storage.js";
 import { createReminders } from "../services/reminderService.js";
+import { sendSseEventToUser } from "../config/sse.js";
 import "dotenv/config";
 
 const isProduction = process.env.mode === "production";
@@ -94,11 +95,22 @@ async function handleAddFile(req, res) {
                             "Failed to create reminders"
                         );
                     }
+
+                    // ── Notify the user via SSE ──
+                    sendSseEventToUser(userId, "extraction-complete", {
+                        documentId: Number(document.id),
+                        expiry_date: extracted.expiry_date,
+                    });
                 } else {
                     logger.warn(
                         { documentId: Number(document.id) },
                         "Could not extract expiry date from document"
                     );
+
+                    // ── Notify the user via SSE that extraction found no date ──
+                    sendSseEventToUser(userId, "extraction-no-date", {
+                        documentId: Number(document.id),
+                    });
                 }
             })
             .catch((err) => {
