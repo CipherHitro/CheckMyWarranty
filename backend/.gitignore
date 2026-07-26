@@ -10,3 +10,4 @@ skills-lock.json
 docker-compose.yml
 private
 private.pub
+.env.production
