@@ -178,10 +178,14 @@ async function handleVerifyOtp(req, res) {
       return res.status(400).json({ message: "Email and OTP are required" });
     }
 
-    const isValid = await verifyOtp(email, otp);
-    if (!isValid) {
-      logger.warn({ email }, "Invalid or expired OTP");
-      return res.status(400).json({ error: "Invalid or expired OTP" });
+    const result = await verifyOtp(email, otp);
+    if (!result.success) {
+      logger.warn({ email, reason: result.reason }, result.message);
+      return res.status(400).json({
+        error: result.message,
+        reason: result.reason,
+        attemptsRemaining: result.attemptsRemaining
+      });
     }
 
     const resetToken = await issueResetToken(email);
