@@ -64,9 +64,10 @@ const Dashboard = () => {
       fetchDocuments();
     });
 
-    // Do NOT close on error — EventSource auto-reconnects.
-    // The connection stays open as long as the dashboard is mounted.
-    // It will be cleaned up when the component unmounts via the return function below.
+    // Sync state on connection or reconnection
+    eventSource.onopen = () => {
+      fetchDocuments();
+    };
 
     return () => {
       eventSource.close();
@@ -372,7 +373,7 @@ const Dashboard = () => {
                         ? isExpired(doc.expiry_date)
                           ? <span className="text-red-500 font-semibold">Expired</span>
                           : `Expires ${formatDate(doc.expiry_date)}`
-                        : null
+                        : <span className="text-amber-500 font-medium animate-pulse">Extracting warranty info...</span>
                       }
                     </p>
                   </div>

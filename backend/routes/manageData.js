@@ -32,10 +32,11 @@ if (isProduction) {
 router.get("/events", (req, res) => {
   const userId = req.user.id;
 
-  // Required SSE Headers
+  // Required SSE Headers for production & reverse proxies (Nginx, Cloudflare, AWS ALB)
   res.setHeader("Content-Type", "text/event-stream");
-  res.setHeader("Cache-Control", "no-cache");
+  res.setHeader("Cache-Control", "no-cache, no-transform");
   res.setHeader("Connection", "keep-alive");
+  res.setHeader("X-Accel-Buffering", "no"); // Tell Nginx NOT to buffer this response
   res.flushHeaders(); // Flush headers to establish connection immediately
 
   // Register this user's SSE connection
@@ -43,13 +44,15 @@ router.get("/events", (req, res) => {
 
   // Send periodic ping to keep the connection alive (prevents EC2/proxy timeouts)
   const keepAlive = setInterval(() => {
-    res.write(": keep-alive\n\n");
+    try {
+      res.write(": keep-alive\n\n");
+    } catch (_) {}
   }, 25000);
 
   // Clean up when the client closes the browser tab or disconnects
   req.on("close", () => {
     clearInterval(keepAlive);
-    removeSseClient(userId);
+    removeSseClient(userId, res);
     res.end();
   });
 });
