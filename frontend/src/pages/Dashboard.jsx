@@ -64,10 +64,9 @@ const Dashboard = () => {
       fetchDocuments();
     });
 
-    eventSource.onerror = () => {
-      // SSE connection closed or failed — this is expected after extraction completes
-      eventSource.close();
-    };
+    // Do NOT close on error — EventSource auto-reconnects.
+    // The connection stays open as long as the dashboard is mounted.
+    // It will be cleaned up when the component unmounts via the return function below.
 
     return () => {
       eventSource.close();
