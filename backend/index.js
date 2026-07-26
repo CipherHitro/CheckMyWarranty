@@ -9,8 +9,11 @@ import pinoHttp from "pino-http";
 import userRoute from "./routes/user.js";
 import manageDataRoute from './routes/manageData.js';
 import { authenticateUser } from './middlewares/auth.js';
-import { reminderWorker } from './workers/reminderWorker.js';
 import { testBrevoConnection } from "./services/brevoEmailService.js";
+import { Queue } from "bullmq";
+import { createBullBoard } from '@bull-board/api';
+import { BullMQAdapter } from '@bull-board/api/bullMQAdapter'; // Use BullAdapter for legacy 'bull'
+import { ExpressAdapter } from '@bull-board/express';
 
 const app = express();
 app.set("trust proxy", 1);
@@ -54,9 +57,28 @@ app.use(cors({
   credentials: true,
 }));
 
+
+// 1. Initialize your existing Bull/BullMQ Queues
+const reminderQueue = new Queue('warranty-reminders', { connection: { host: 'redis', port: 6379 } });
+
+// 2. Set up the Bull Board Express Adapter
+const serverAdapter = new ExpressAdapter();
+serverAdapter.setBasePath('/admin/queues');
+
+// 3. Create the Bull Board UI Instance
+createBullBoard({
+  queues: [
+    new BullMQAdapter(reminderQueue),
+  ],
+  serverAdapter: serverAdapter,
+});
+
+
 app.use(express.json());
 app.use(cookieParser());
 
+// 4. Mount the Router Path on your Express app
+app.use('/admin/queues', serverAdapter.getRouter());
 // Serve uploaded files statically
 app.use('/uploads', express.static(path.join(import.meta.dirname, 'uploads')));
 
@@ -81,5 +103,6 @@ app.get('/', (req, res) => {
 app.listen(port, () => {
   logger.info({ port }, "Server started");
   logger.info("Reminder worker started — listening for email jobs");
+  logger.info('Bull Board UI available at /admin/queues')
   testBrevoConnection();
 });
