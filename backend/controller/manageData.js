@@ -8,6 +8,7 @@ import { uploadToS3, deleteFromS3, getSignedS3Url } from "../services/s3Storage.
 import { createReminders } from "../services/reminderService.js";
 import { sendSseEventToUser } from "../config/sse.js";
 import "dotenv/config";
+import { redisConnection } from "../config/redis.js";
 
 const isProduction = process.env.mode === "production";
 
@@ -177,7 +178,8 @@ async function handleRemoveFile(req, res) {
         await prisma.documents.delete({
             where: { id: BigInt(documentId) },
         });
-
+        await redisConnection.del(`signed-url:${documentId}`);
+        
         logger.info({ documentId, userId: Number(userId) }, "Document removed");
         return res.status(200).json({ message: "File removed successfully" });
     } catch (error) {
@@ -235,7 +237,7 @@ async function handleFetchOne(req, res) {
 
         // Only generate signed URL for S3-stored files in production
         if (isProduction && !fileUrl.startsWith("/uploads/")) {
-            fileUrl = await getSignedS3Url(fileUrl, 600); // 10 minutes expiry
+            fileUrl = await getSignedS3Url(documentId, fileUrl, 900); // 10 minutes expiry
             logger.debug({ documentId }, "Signed URL generated for document");
         }
 
