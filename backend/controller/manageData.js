@@ -7,8 +7,9 @@ import { extractWarrantyDetails } from "../services/extractWarranty.js";
 import { uploadToS3, deleteFromS3, getSignedS3Url } from "../services/s3Storage.js";
 import { createReminders } from "../services/reminderService.js";
 import { sendSseEventToUser } from "../config/sse.js";
-import "dotenv/config";
 import { redisConnection } from "../config/redis.js";
+import { reminderQueue } from "../queues/reminderQueue.js";
+import "dotenv/config";
 
 const isProduction = process.env.mode === "production";
 
@@ -149,9 +150,10 @@ async function handleRemoveFile(req, res) {
             return res.status(400).json({ message: "Document ID is required" });
         }
 
-        // Fetch the document to get the file path (and verify ownership)
+        // Fetch the document with its reminders (to cancel pending BullMQ jobs)
         const doc = await prisma.documents.findFirst({
             where: { id: BigInt(documentId), user_id: userId },
+            include: { reminders: { select: { id: true } } },
         });
 
         if (!doc) {
@@ -174,12 +176,24 @@ async function handleRemoveFile(req, res) {
             logger.debug({ documentId, fileUrl }, "File deleted from local disk");
         }
 
-        // Delete the record from the database
+        // Cancel all pending BullMQ reminder jobs for this document
+        if (doc.reminders && doc.reminders.length > 0) {
+            for (const reminder of doc.reminders) {
+                try {
+                    await reminderQueue.remove(`reminder-${reminder.id}`);
+                    logger.debug({ reminderId: Number(reminder.id) }, "Pending reminder job removed from queue");
+                } catch (_) {
+                    // Job may already be processed or not exist — ignore
+                }
+            }
+        }
+
+        // Delete the record from the database (cascade deletes reminders)
         await prisma.documents.delete({
             where: { id: BigInt(documentId) },
         });
         await redisConnection.del(`signed-url:${documentId}`);
-        
+
         logger.info({ documentId, userId: Number(userId) }, "Document removed");
         return res.status(200).json({ message: "File removed successfully" });
     } catch (error) {
