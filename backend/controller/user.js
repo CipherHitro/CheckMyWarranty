@@ -1,6 +1,8 @@
 import prisma from "../connection.js";
 import bcrypt from "bcryptjs";
 import { setUser } from "../services/auth.js";
+import { generateAndStoreOtp, verifyOtp, issueResetToken, consumeResetToken } from "../services/otpService.js";
+import { sendOtpEmail } from "../services/brevoEmailService.js";
 import logger from "../logger.js";
 import 'dotenv/config';
 
@@ -139,9 +141,98 @@ function handleLogout(req, res) {
   return res.status(200).json({ message: "Logged out successfully" });
 }
 
+async function handleForgetPassword(req, res) {
+  try {
+    const { email } = req.body;
+    logger.debug({ email }, "Forgot password request");
+
+    if (!email) {
+      return res.status(400).json({ message: "Email is required" });
+    }
+
+    const user = await prisma.users.findUnique({ where: { email } });
+
+    // Always return the same response whether or not the user exists —
+    // otherwise this endpoint leaks which emails are registered.
+    if (user) {
+      const otp = await generateAndStoreOtp(email);
+      await sendOtpEmail(email, otp);
+      logger.info({ email }, "OTP sent for password reset");
+    } else {
+      logger.warn({ email }, "Forgot password — email not found (response hidden)");
+    }
+
+    res.json({ message: "If that email exists, an OTP has been sent." });
+  } catch (error) {
+    logger.error({ err: error }, "Forgot password error");
+    return res.status(500).json({ message: "Internal server error" });
+  }
+}
+
+async function handleVerifyOtp(req, res) {
+  try {
+    const { email, otp } = req.body;
+    logger.debug({ email }, "OTP verification attempt");
+
+    if (!email || !otp) {
+      return res.status(400).json({ message: "Email and OTP are required" });
+    }
+
+    const isValid = await verifyOtp(email, otp);
+    if (!isValid) {
+      logger.warn({ email }, "Invalid or expired OTP");
+      return res.status(400).json({ error: "Invalid or expired OTP" });
+    }
+
+    const resetToken = await issueResetToken(email);
+    logger.info({ email }, "OTP verified — reset token issued");
+    res.json({ resetToken });
+  } catch (error) {
+    logger.error({ err: error }, "OTP verification error");
+    return res.status(500).json({ message: "Internal server error" });
+  }
+}
+
+async function handleResetPassword(req, res) {
+  try {
+    const { resetToken, newPassword, confirmPassword } = req.body;
+
+    if (!resetToken || !newPassword || !confirmPassword) {
+      return res.status(400).json({ message: "All fields are required" });
+    }
+
+    if (newPassword !== confirmPassword) {
+      return res.status(400).json({ message: "Passwords do not match" });
+    }
+
+    const email = await consumeResetToken(resetToken);
+    if (!email) {
+      logger.warn("Reset password — invalid or expired token");
+      return res.status(400).json({ error: "Invalid or expired reset session" });
+    }
+
+    const salt = bcrypt.genSaltSync(10);
+    const hashed = bcrypt.hashSync(newPassword, salt);
+
+    await prisma.users.update({
+      where: { email },
+      data: { password_hash: hashed },
+    });
+
+    logger.info({ email }, "Password reset successfully");
+    res.json({ message: "Password updated successfully" });
+  } catch (error) {
+    logger.error({ err: error }, "Reset password error");
+    return res.status(500).json({ message: "Internal server error" });
+  }
+}
+
 export {
   handleLogin,
   handleSignUp,
   handleGetMe,
   handleLogout,
+  handleForgetPassword,
+  handleVerifyOtp,
+  handleResetPassword
 };

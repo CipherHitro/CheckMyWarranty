@@ -71,3 +71,19 @@ export async function sendReminderEmail(toEmail, documentName, expiryDate, daysR
     return { success: false, error: error.message };
   }
 }
+
+export async function sendOtpEmail(toEmail, otp) {
+  await emailApi.sendTransacEmail({
+    subject: "Your password reset code",
+    htmlContent: `
+      <div style="font-family: Arial, sans-serif; max-width: 400px; margin: 0 auto; padding: 20px;">
+        <h2>Password Reset</h2>
+        <p>Your one-time code is:</p>
+        <p style="font-size: 28px; font-weight: bold; letter-spacing: 4px;">${otp}</p>
+        <p style="color: #999; font-size: 12px;">This code expires in 5 minutes.</p>
+      </div>
+    `,
+    sender: { name: process.env.BREVO_SENDER_NAME, email: process.env.BREVO_SENDER_EMAIL },
+    to: [{ email: toEmail }],
+  });
+}
