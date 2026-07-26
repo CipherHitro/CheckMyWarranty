@@ -14,6 +14,7 @@ import { Queue } from "bullmq";
 import { createBullBoard } from '@bull-board/api';
 import { BullMQAdapter } from '@bull-board/api/bullMQAdapter'; // Use BullAdapter for legacy 'bull'
 import { ExpressAdapter } from '@bull-board/express';
+import { boardAuth } from "./middlewares/auth.js";
 
 const app = express();
 app.set("trust proxy", 1);
@@ -78,7 +79,7 @@ app.use(express.json());
 app.use(cookieParser());
 
 // 4. Mount the Router Path on your Express app
-app.use('/admin/queues', serverAdapter.getRouter());
+app.use('/admin/queues', boardAuth,  serverAdapter.getRouter());
 // Serve uploaded files statically
 app.use('/uploads', express.static(path.join(import.meta.dirname, 'uploads')));
 

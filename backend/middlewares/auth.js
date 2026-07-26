@@ -1,6 +1,7 @@
 import { getUser } from '../services/auth.js';
 import prisma from '../connection.js';
 import logger from '../logger.js';
+import basicAuth from 'express-basic-auth';
 
 async function authenticateUser(req, res, next) {
   try {
@@ -40,4 +41,10 @@ async function authenticateUser(req, res, next) {
   }
 }
 
-export { authenticateUser };
+const boardAuth = basicAuth({
+  users: {
+    admin: process.env.BULL_BOARD_PASSWORD || 'supersecretpassword',
+  },
+  challenge: true,
+});
+export { authenticateUser , boardAuth};
