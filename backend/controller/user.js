@@ -1,6 +1,14 @@
 import prisma from "../connection.js";
 import bcrypt from "bcryptjs";
-import { setUser } from "../services/auth.js";
+import {
+  generateAccessToken,
+  generateRefreshToken,
+  storeRefreshToken,
+  isRefreshTokenValid,
+  revokeRefreshToken,
+} from "../services/tokenService.js";
+import { getUser } from "../services/auth.js";
+import jwt from "jsonwebtoken";
 import { generateAndStoreOtp, verifyOtp, issueResetToken, consumeResetToken } from "../services/otpService.js";
 import { sendOtpEmail } from "../services/brevoEmailService.js";
 import logger from "../logger.js";
@@ -41,7 +49,6 @@ async function handleSignUp(req, res) {
       }
     });
 
-    // Convert BigInt id to Number for JSON serialization
     const userResponse = {
       id: Number(newUser.id),
       email: newUser.email
@@ -82,25 +89,107 @@ async function handleLogin(req, res) {
       return res.status(401).json({ message: "Invalid email or password" });
     }
 
-    // Generate token — convert BigInt id to Number for JWT compatibility
-    const token = setUser({ ...user, id: Number(user.id) });
+    // Generate tokens
+    const accessToken = generateAccessToken(user);
+    const refreshToken = generateRefreshToken(user);
+
+    // Store refresh token in Redis
+    await storeRefreshToken(Number(user.id), refreshToken);
 
     const isProd = process.env.mode === "production";
-    // If behind a proxy (e.g. AWS ALB), trust the X-Forwarded-Proto header
     const isSecure = req.secure || req.headers["x-forwarded-proto"] === "https";
 
-    res.cookie("uid", token, {
+    // Set cookies
+    res.cookie("accessToken", accessToken, {
       httpOnly: true,
       secure: isSecure,
       sameSite: isProd ? "none" : "lax",
       path: "/",
-      maxAge: 24 * 60 * 60 * 1000,
+      maxAge: 15 * 60 * 1000, // 15 minutes
+    });
+
+    res.cookie("refreshToken", refreshToken, {
+      httpOnly: true,
+      secure: isSecure,
+      sameSite: isProd ? "none" : "lax",
+      path: "/",
+      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
     });
 
     logger.info({ email, userId: Number(user.id) }, "Login successful");
     return res.status(200).json({ message: "Logged in!" });
   } catch (error) {
     logger.error({ err: error }, "Login error");
+    return res.status(500).json({ message: "Internal server error" });
+  }
+}
+
+async function handleRefreshToken(req, res) {
+  try {
+    const refreshToken = req.cookies?.refreshToken;
+
+    if (!refreshToken) {
+      logger.warn("Refresh — no refresh token provided");
+      return res.status(401).json({ message: "No refresh token provided" });
+    }
+
+    // Verify the refresh token JWT
+    let decoded;
+    try {
+      decoded = jwt.verify(refreshToken, process.env.REFRESH_TOKEN_SECRET);
+    } catch {
+      logger.warn("Refresh — invalid or expired refresh token");
+      return res.status(401).json({ message: "Invalid or expired refresh token" });
+    }
+
+    // Check if refresh token is valid in Redis
+    const valid = await isRefreshTokenValid(decoded.id, refreshToken);
+    if (!valid) {
+      logger.warn({ userId: decoded.id }, "Refresh — token revoked or not found in Redis");
+      return res.status(401).json({ message: "Refresh token revoked" });
+    }
+
+    // Fetch user
+    const user = await prisma.users.findUnique({
+      where: { id: BigInt(decoded.id) }
+    });
+
+    if (!user) {
+      logger.warn({ userId: decoded.id }, "Refresh — user not found");
+      return res.status(401).json({ message: "User not found" });
+    }
+
+    // Generate new tokens (rotate refresh token)
+    const newAccessToken = generateAccessToken(user);
+    const newRefreshToken = generateRefreshToken(user);
+
+    // Revoke old refresh token and store new one
+    await revokeRefreshToken(Number(user.id));
+    await storeRefreshToken(Number(user.id), newRefreshToken);
+
+    const isProd = process.env.mode === "production";
+    const isSecure = req.secure || req.headers["x-forwarded-proto"] === "https";
+
+    res.cookie("accessToken", newAccessToken, {
+      httpOnly: true,
+      secure: isSecure,
+      sameSite: isProd ? "none" : "lax",
+      path: "/",
+      maxAge: 15 * 60 * 1000,
+    });
+
+    res.cookie("refreshToken", newRefreshToken, {
+      httpOnly: true,
+      secure: isSecure,
+      sameSite: isProd ? "none" : "lax",
+      path: "/",
+      maxAge: 7 * 24 * 60 * 60 * 1000,
+    });
+
+    logger.debug({ userId: Number(user.id) }, "Tokens refreshed successfully");
+    return res.status(200).json({ message: "Tokens refreshed" });
+  } catch (error) {
+    logger.error({ err: error }, "Refresh token error");
     return res.status(500).json({ message: "Internal server error" });
   }
 }
@@ -129,14 +218,37 @@ async function handleGetMe(req, res) {
 }
 
 function handleLogout(req, res) {
+  // Try to get userId from the refresh token cookie (logout is not behind auth middleware)
+  const refreshToken = req.cookies?.refreshToken;
+  let userId = null;
+
+  if (refreshToken) {
+    try {
+      const decoded = jwt.verify(refreshToken, process.env.REFRESH_TOKEN_SECRET);
+      userId = decoded.id;
+      revokeRefreshToken(userId).catch(() => {});
+    } catch {
+      // Token invalid or expired — just clear cookies
+    }
+  }
+
   const isProd = process.env.mode === "production";
   const isSecure = req.secure || req.headers["x-forwarded-proto"] === "https";
-  res.clearCookie("uid", {
+
+  res.clearCookie("accessToken", {
     httpOnly: true,
     secure: isSecure,
     sameSite: isProd ? "none" : "lax",
     path: "/",
   });
+
+  res.clearCookie("refreshToken", {
+    httpOnly: true,
+    secure: isSecure,
+    sameSite: isProd ? "none" : "lax",
+    path: "/",
+  });
+
   logger.info("User logged out");
   return res.status(200).json({ message: "Logged out successfully" });
 }
@@ -152,8 +264,6 @@ async function handleForgetPassword(req, res) {
 
     const user = await prisma.users.findUnique({ where: { email } });
 
-    // Always return the same response whether or not the user exists —
-    // otherwise this endpoint leaks which emails are registered.
     if (user) {
       const otp = await generateAndStoreOtp(email);
       await sendOtpEmail(email, otp);
@@ -179,13 +289,9 @@ async function handleVerifyOtp(req, res) {
     }
 
     const result = await verifyOtp(email, otp);
-    if (!result.success) {
-      logger.warn({ email, reason: result.reason }, result.message);
-      return res.status(400).json({
-        error: result.message,
-        reason: result.reason,
-        attemptsRemaining: result.attemptsRemaining
-      });
+    if (!result) {
+      logger.warn({ email }, "Invalid or expired OTP");
+      return res.status(400).json({ error: "Invalid or expired OTP" });
     }
 
     const resetToken = await issueResetToken(email);
@@ -238,5 +344,6 @@ export {
   handleLogout,
   handleForgetPassword,
   handleVerifyOtp,
-  handleResetPassword
+  handleResetPassword,
+  handleRefreshToken,
 };

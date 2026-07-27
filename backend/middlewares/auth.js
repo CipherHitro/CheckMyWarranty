@@ -6,10 +6,10 @@ import basicAuth from 'express-basic-auth';
 async function authenticateUser(req, res, next) {
   try {
     // Get token from cookie
-    const token = req.cookies?.uid;
+    const token = req.cookies?.accessToken;
     
     if (!token) {
-      logger.warn("Auth — no token provided");
+      logger.warn("Auth — no Access token provided");
       return res.status(401).json({ message: "No authentication token provided" });
     }
 

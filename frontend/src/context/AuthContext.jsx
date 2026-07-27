@@ -1,7 +1,6 @@
-import { createContext, useContext, useState, useEffect } from "react";
+import { createContext, useContext, useState, useEffect, useCallback, useRef } from "react";
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3000/api";
-const MODE = import.meta.env.VITE_MODE;
 
 const AuthContext = createContext(null);
 
@@ -13,17 +12,52 @@ export const useAuth = () => {
   return context;
 };
 
+/**
+ * Wrapper around fetch that automatically refreshes the access token
+ * when a 401 response is received.
+ */
+async function authFetch(url, options = {}) {
+  const res = await fetch(url, {
+    ...options,
+    credentials: "include",
+  });
+
+  // If not 401, return the response as-is
+  if (res.status !== 401) {
+    return res;
+  }
+
+  // Token might be expired — try to refresh
+  const refreshRes = await fetch(`${API_URL}/user/refresh`, {
+    method: "POST",
+    credentials: "include",
+  });
+
+  if (!refreshRes.ok) {
+    // Refresh failed — return the original 401 response
+    return res;
+  }
+
+  // Refresh succeeded — retry the original request
+  const retryRes = await fetch(url, {
+    ...options,
+    credentials: "include",
+  });
+
+  return retryRes;
+}
+
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
+  const refreshAttemptedRef = useRef(false);
 
   // On mount, verify session by calling the backend /me endpoint
   useEffect(() => {
     const verifySession = async () => {
       try {
-        const res = await fetch(`${API_URL}/user/me`, {
+        const res = await authFetch(`${API_URL}/user/me`, {
           method: "GET",
-          credentials: "include",
         });
 
         if (res.ok) {
@@ -64,10 +98,9 @@ export const AuthProvider = ({ children }) => {
       throw new Error(data.message || "Login failed");
     }
 
-    // Fetch user info from the /me endpoint (cookie is set by backend)
-    const meRes = await fetch(`${API_URL}/user/me`, {
+    // Fetch user info from the /me endpoint (cookies are set by backend)
+    const meRes = await authFetch(`${API_URL}/user/me`, {
       method: "GET",
-      credentials: "include",
     });
 
     if (meRes.ok) {
@@ -113,7 +146,7 @@ export const AuthProvider = ({ children }) => {
       return
     }
 
-    // Clear httpOnly cookie via backend
+    // Clear httpOnly cookies via backend
     try {
       await fetch(`${API_URL}/user/logout`, {
         method: "POST",
@@ -127,7 +160,7 @@ export const AuthProvider = ({ children }) => {
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, signup, logout }}>
+    <AuthContext.Provider value={{ user, loading, login, signup, logout, authFetch }}>
       {children}
     </AuthContext.Provider>
   );

@@ -1,7 +1,6 @@
 import jwt from "jsonwebtoken";
 import crypto from "crypto";
-import redis from "./redisClient.js";
-import { redisConnection } from '../config/redis,js';
+import { redisConnection } from "../config/redis.js";
 
 const ACCESS_TOKEN_EXPIRY = "15m";
 const REFRESH_TOKEN_EXPIRY = "7d";
@@ -12,19 +11,18 @@ function hashToken(token) {
 }
 
 export function generateAccessToken(user) {
-  return jwt.sign({ id: user.id, email: user.email }, process.env.ACCESS_TOKEN_SECRET, {
+  return jwt.sign({ id: Number(user.id), email: user.email }, process.env.ACCESS_TOKEN_SECRET, {
     expiresIn: ACCESS_TOKEN_EXPIRY,
   });
 }
 
 export function generateRefreshToken(user) {
-  return jwt.sign({ id: user.id }, process.env.REFRESH_TOKEN_SECRET, {
+  return jwt.sign({ id: Number(user.id) }, process.env.REFRESH_TOKEN_SECRET, {
     expiresIn: REFRESH_TOKEN_EXPIRY,
   });
 }
 
 export async function storeRefreshToken(userId, refreshToken) {
-  // store a hash, not the raw token — same principle as never storing plaintext passwords
   await redisConnection.set(`refresh:${userId}`, hashToken(refreshToken), "EX", REFRESH_TOKEN_TTL_SECONDS);
 }
 
