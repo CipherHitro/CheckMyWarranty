@@ -9,6 +9,7 @@ const REMINDER_DAYS = [7, 3, 1];
  * Create reminders for a document based on its expiry date.
  * Creates 3 separate reminder records (7-day, 3-day, 1-day) and
  * schedules a BullMQ job for each with the appropriate delay.
+ * All times use UTC internally — 3:30 UTC = 9:00 AM IST.
  *
  * @param {bigint} userId - The user's ID
  * @param {bigint} documentId - The document's ID
@@ -32,7 +33,6 @@ async function createReminders(userId, documentId, userEmail, documentName, expi
   const daysRemaining = Math.ceil((expiry - now) / msPerDay);
 
   for (const daysBefore of REMINDER_DAYS) {
-    // Only create this reminder if the expiry is far enough away
     if (daysRemaining < daysBefore) {
       logger.debug(
         { documentId: Number(documentId), daysBefore, daysRemaining },
@@ -41,12 +41,12 @@ async function createReminders(userId, documentId, userEmail, documentName, expi
       continue;
     }
 
-    // Calculate the remind_at date for this specific reminder
+    // Calculate remind_at using UTC methods
+    // 3:30 UTC = 9:00 AM IST — this works regardless of server timezone
     const remindAt = new Date(expiry);
-    remindAt.setDate(remindAt.getDate() - daysBefore);
-    remindAt.setHours(9, 0, 0, 0); // Send at 9 AM user's time
+    remindAt.setUTCDate(remindAt.getUTCDate() - daysBefore);
+    remindAt.setUTCHours(3, 30, 0, 0); // 3:30 UTC = 9:00 AM IST
 
-    // Don't schedule if remind_at has already passed
     if (remindAt <= now) {
       logger.debug(
         { documentId: Number(documentId), daysBefore, remindAt: remindAt.toISOString() },
@@ -71,6 +71,7 @@ async function createReminders(userId, documentId, userEmail, documentName, expi
         reminderId: Number(reminder.id),
         daysBefore,
         remindAt: remindAt.toISOString(),
+        remindAtIST: remindAt.toLocaleString("en-IN", { timeZone: "Asia/Kolkata" }),
       },
       `Reminder record created for ${daysBefore}-day notification`
     );

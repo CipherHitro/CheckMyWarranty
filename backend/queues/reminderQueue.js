@@ -17,12 +17,13 @@ export const reminderQueue = new Queue(REMINDER_QUEUE_NAME, {
 /**
  * Helper to schedule a delayed reminder email job.
  * Called once per reminder record (7d, 3d, 1d).
+ * Uses UTC internally — 3:30 UTC = 9:00 AM IST.
  */
 export async function scheduleReminderJob({ reminderId, userId, userEmail, documentName, daysBefore, expiryDate }) {
   // Calculate the delay from now until the reminder should fire
   const targetDate = new Date(expiryDate);
-  targetDate.setDate(targetDate.getDate() - daysBefore);
-  targetDate.setHours(9, 0, 0, 0); // Send at 9 AM
+  targetDate.setUTCDate(targetDate.getUTCDate() - daysBefore);
+  targetDate.setUTCHours(3, 30, 0, 0); // 3:30 UTC = 9:00 AM IST
 
   const delayMs = targetDate.getTime() - Date.now();
 
@@ -45,7 +46,13 @@ export async function scheduleReminderJob({ reminderId, userId, userEmail, docum
   );
 
   logger.info(
-    { reminderId, daysBefore, documentName, delayMinutes: Math.round(delayMs / 1000 / 60) },
+    {
+      reminderId,
+      daysBefore,
+      documentName,
+      delayMinutes: Math.round(delayMs / 1000 / 60),
+      targetDateIST: targetDate.toLocaleString("en-IN", { timeZone: "Asia/Kolkata" }),
+    },
     `Scheduled ${daysBefore}-day reminder for ${documentName}`
   );
 }
