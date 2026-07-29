@@ -12,6 +12,7 @@ import { authenticateUser, boardAuth } from './middlewares/auth.js';
 import { testBrevoConnection } from "./services/brevoEmailService.js";
 import { reminderQueue } from './queues/reminderQueue.js';
 import "./workers/reminderWorker.js"; // starts the worker as a side-effect
+import { recoverPendingJobs } from './services/jobRecoveryService.js';
 import { createBullBoard } from '@bull-board/api';
 import { BullMQAdapter } from '@bull-board/api/bullMQAdapter';
 import { ExpressAdapter } from '@bull-board/express';
@@ -94,4 +95,7 @@ app.listen(port, () => {
   logger.info("Reminder worker started — listening for email jobs");
   logger.info('Bull Board UI available at /admin/queues');
   testBrevoConnection();
+
+  // Recover any pending reminders that were lost when Redis went down
+  recoverPendingJobs();
 });

@@ -11,7 +11,7 @@ export const reminderWorker = new Worker(
   async (job) => {
     const { reminderId, userEmail, documentName, daysBefore, expiryDate } = job.data;
 
-    logger.info({ reminderId, jobId: job.id }, `Processing ${daysBefore}-day reminder job`);
+    logger.info({ reminderId, jobId: job.id, attempt: job.attemptsMade + 1 }, `Processing ${daysBefore}-day reminder job`);
 
     // 1. Fetch reminder from DB to ensure it wasn't deleted or already sent
     const reminder = await prisma.reminders.findUnique({
@@ -52,7 +52,7 @@ export const reminderWorker = new Worker(
   },
   {
     connection: redisConnection,
-    concurrency: 5, // Process up to 5 jobs simultaneously
+    concurrency: 5,
   }
 );
 
@@ -60,6 +60,25 @@ reminderWorker.on("completed", (job) => {
   logger.debug({ jobId: job.id }, "Worker job completed");
 });
 
-reminderWorker.on("failed", (job, err) => {
-  logger.error({ jobId: job?.id, err }, "Worker job failed");
+reminderWorker.on("failed", async (job, err) => {
+  logger.error({ jobId: job?.id, err: err.message }, "Worker job failed");
+
+  // If all retry attempts exhausted, mark reminder as failed in DB
+  if (job && job.attemptsMade >= (job.opts?.attempts || 3)) {
+    try {
+      const reminderId = job.data.reminderId;
+      if (reminderId) {
+        await prisma.reminders.update({
+          where: { id: BigInt(reminderId) },
+          data: { status: "failed" },
+        });
+        logger.warn(
+          { reminderId, jobId: job.id },
+          "Max retries reached — reminder marked as failed"
+        );
+      }
+    } catch (dbErr) {
+      logger.error({ err: dbErr }, "Failed to update reminder status to failed");
+    }
+  }
 });
