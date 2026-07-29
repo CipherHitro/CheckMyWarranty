@@ -13,6 +13,7 @@ import { testBrevoConnection } from "./services/brevoEmailService.js";
 import { reminderQueue } from './queues/reminderQueue.js';
 import "./workers/reminderWorker.js"; // starts the worker as a side-effect
 import { recoverPendingJobs } from './services/jobRecoveryService.js';
+import { shouldIgnoreRequest } from './utils/logFilter.js';
 import { createBullBoard } from '@bull-board/api';
 import { BullMQAdapter } from '@bull-board/api/bullMQAdapter';
 import { ExpressAdapter } from '@bull-board/express';
@@ -27,6 +28,9 @@ const isProduction = process.env.mode === "production";
 if (isProduction) {
   app.use(pinoHttp({
     logger,
+    autoLogging: {
+      ignore: (req) => shouldIgnoreRequest(req.url),
+    },
     redact: {
       paths: ["req.headers.cookie", "req.headers.authorization", "body.password", "body.token"],
       censor: "[REDACTED]",
@@ -36,7 +40,7 @@ if (isProduction) {
   app.use((req, res, next) => {
     const start = Date.now();
     res.on("finish", () => {
-      if (req.url === "/health") return;
+      if (shouldIgnoreRequest(req.url)) return;
       const responseTime = Date.now() - start;
       const level = res.statusCode >= 500 ? "error" : res.statusCode >= 400 ? "warn" : "info";
       logger[level]("%s %s %s %dms", req.method, req.url, res.statusCode, responseTime);
