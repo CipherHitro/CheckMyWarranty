@@ -1,58 +1,111 @@
 # 📋 CheckMyWarranty
 
-A full-stack web application that helps users manage product warranties by uploading warranty documents (PDFs and images), automatically extracting expiry dates using AI, and sending email reminders before warranties expire.
+A full-stack, enterprise-grade web application designed to track and manage product warranty documents. Upload warranty receipts or invoices (PDFs and images), automatically extract warranty details and expiry dates using **Groq AI LLMs**, receive automated email reminders prior to expiration, and stream real-time updates via **Server-Sent Events (SSE)**.
 
 🚀 **Live Demo:** [checkmywarranty.vercel.app](https://checkmywarranty.vercel.app/)
 
 🔑 **Demo Credentials:**
-- Email: `demo@gmail.com`
-- Password: `Demo@123`
+- **Email:** `demo@gmail.com`
+- **Password:** `Demo@123`
 
 ---
 
 ## ✨ Features
 
-- **User Authentication** — Secure signup/login with hashed passwords and JWT-based sessions (httpOnly cookies in production, client-side cookies in development).
-- **Document Upload** — Upload warranty documents (PDF, JPEG, PNG, WebP, GIF) via drag-and-drop or file picker with a 10 MB size limit.
-- **AI-Powered Extraction** — Automatically extracts purchase date, item name, and warranty expiry date from uploaded documents using Groq LLMs:
-  - Text-based PDFs → **Llama 3.1 8B Instant** (text extraction)
-  - Scanned/image PDFs → **Llama 4 Scout 17B** (vision model)
-  - Image files → **Llama 4 Scout 17B** (vision model)
-- **Smart Reminders** — Automatically creates reminder entries in the database and sends email notifications via **Brevo** (formerly Sendinblue):
-  - 7 days before expiry (first reminder)
-  - 3 days before expiry (final urgent reminder)
-- **Cron-Based Scheduler** — A `node-cron` job runs daily to process due reminders and send emails.
-- **File Storage** — Local disk storage in development; **Supabase Storage** with signed URLs in production.
-- **Responsive UI** — Clean, modern dashboard built with React and Tailwind CSS.
+- **🔐 Dual-Token Authentication & Security** — Access Token & Refresh Token authentication pattern with httpOnly cookie handling, password hashing via bcryptjs, and complete session management.
+- **🔑 Password Reset Flow** — Forgot Password feature utilizing time-limited OTP verification and secure reset tokens managed in **Redis**.
+- **📄 AI-Powered Document Processing** — Auto-extracts purchase date, item name, and warranty expiry date from uploaded files using **Groq LLMs**:
+  - **Text PDFs:** Analyzed using `Llama 3.1 8B Instant`.
+  - **Scanned/Image PDFs & Images:** Analyzed using `Llama 4 Scout 17B` (Vision model).
+- **⚡ Real-Time Server-Sent Events (SSE)** — Replaced HTTP polling with a real-time SSE stream (`/api/data/events`) for instantaneous document processing updates. Includes keep-alive pings and Nginx buffering bypass (`X-Accel-Buffering: no`).
+- **🚀 High-Performance Caching Layer (Redis)** — Multi-layer caching for document metadata and pre-signed AWS S3 URLs. Checks Redis cache first; if cache hit, serves instantly; if cache miss, queries database/S3 and populates Redis cache.
+- **☁️ AWS S3 Cloud Storage** — Secure cloud file storage utilizing AWS S3 with time-bound signed URLs (`@aws-sdk/s3-request-presigner`) for secure document viewing in production, and local disk storage in development.
+- **🗄️ Relational Database with Prisma ORM** — Migrated from raw SQL to **Prisma ORM** interacting with **AWS RDS PostgreSQL** in production and containerized PostgreSQL in development.
+- **⏰ Distributed Queue & Background Workers** — **BullMQ** task queue backed by Redis with automated background workers for scheduling warranty email notifications (7 days and 3 days before expiry).
+- **📊 Bull Board Monitoring Dashboard** — Integrated `@bull-board/express` dashboard protected by HTTP Basic Auth available at `/admin/queues` for monitoring background email jobs.
+- **📧 Transactional Emails** — Styled HTML reminder and OTP emails delivered via **Brevo API** (formerly Sendinblue).
+- **📈 Observability & Logging (Pino + Loki + Grafana)** — Structured JSON logging with `pino` and `pino-loki`. Ships logs to local **Loki** & pre-configured **Grafana** (`http://localhost:3001`) during development, and streams directly to **Grafana Cloud** in production to minimize EC2 memory overhead.
+- **🐳 Containerized Architecture & CI/CD** — Fully containerized backend using Docker & Docker Compose. Automated CI/CD pipeline via **GitHub Actions** deploying to **AWS EC2** behind an **Nginx** reverse proxy.
 
 ---
 
-## 🏗️ Tech Stack
+## 🏗️ Architecture & System Design
+
+```
++-----------------------------------------------------------------------------------+
+|                                    FRONTEND                                       |
+|                            React 19 + Tailwind CSS                                |
++-----------------------------------------------------------------------------------+
+                                         |
+                                (REST API / SSE)
+                                         v
++-----------------------------------------------------------------------------------+
+|                             NGINX REVERSE PROXY                                   |
+|                        (SSL Termination & SSE Buffering Off)                      |
++-----------------------------------------------------------------------------------+
+                                         |
+                                         v
++-----------------------------------------------------------------------------------+
+|                        AWS EC2 (DOCKER CONTAINER)                                 |
+|                                                                                   |
+|  +-----------------------------------------------------------------------------+  |
+|  |                       Node.js + Express 5 Backend                           |  |
+|  |                                                                             |  |
+|  |  +-------------------+   +--------------------+   +---------------------+  |  |
+|  |  |  JWT Auth & OTP   |   |  Pino JSON Logger  |   |  Prisma Client ORM  |  |  |
+|  |  +-------------------+   +--------------------+   +---------------------+  |  |
+|  +-----------------------------------------------------------------------------+  |
++-----------------------------------------------------------------------------------+
+        |                 |                   |                 |               |
+        v                 v                   v                 v               v
+ +-------------+   +--------------+   +---------------+   +-----------+   +-----------+
+ |  AWS RDS    |   | Redis Cache  |   | AWS S3 Bucket |   | Groq AI   |   | Brevo     |
+ | PostgreSQL  |   | & BullMQ     |   | (Signed URLs) |   | (Llama 4) |   | Email API |
+ +-------------+   +--------------+   +---------------+   +-----------+   +-----------+
+                          |                                     |
+                          v                                     v
+                   +--------------+                      +---------------+
+                   | Bull Board   |                      | Grafana Cloud |
+                   | (/admin/q)   |                      | (Pino-Loki)   |
+                   +--------------+                      +---------------+
+```
+
+---
+
+## 💻 Tech Stack
 
 ### Frontend
 | Technology | Purpose |
 |---|---|
-| React 19 | UI library |
-| React Router v7 | Client-side routing |
-| Tailwind CSS v4 | Styling |
-| Vite 7 | Build tool & dev server |
-| Lucide React | Icons |
-| React Hot Toast | Toast notifications |
-| js-cookie | Cookie management (dev mode) |
+| **React 19** | UI Component Framework |
+| **React Router v7** | Single-Page Application Client-Side Routing |
+| **Tailwind CSS v4** | Utility-First Responsive Styling |
+| **Vite 7** | Development Server & Production Bundler |
+| **Lucide React** | Modern Icon Library |
+| **React Hot Toast** | Real-Time Toast Notifications |
 
-### Backend
+### Backend & Core Services
 | Technology | Purpose |
 |---|---|
-| Express 5 | HTTP server & REST API |
-| PostgreSQL (pg) | Relational database |
-| bcryptjs | Password hashing |
-| jsonwebtoken | JWT auth tokens |
-| Groq SDK | AI-powered warranty extraction |
-| pdf-parse v2 | PDF text extraction & page rendering |
-| Multer | File upload handling |
-| Brevo (@getbrevo/brevo) | Transactional reminder emails |
-| node-cron | Scheduled reminder processing |
-| Supabase JS | Cloud file storage (production) |
+| **Express 5** | RESTful HTTP Server & Middleware Engine |
+| **Prisma ORM** | Type-Safe Database Client & Schema Management |
+| **PostgreSQL (AWS RDS)** | Production Relational Database |
+| **Redis & ioredis** | High-Speed Cache & In-Memory Storage for Tokens/OTP |
+| **BullMQ & @bull-board** | Queue-Based Background Worker & Admin Dashboard |
+| **AWS SDK v3 (S3)** | Object Storage & Pre-signed URL Generator |
+| **Groq AI SDK** | Vision & Text Document Extraction (Llama 3.1 & 4 Scout) |
+| **Pino & Pino-Loki** | High-Performance Logging & Grafana Loki Shipper |
+| **Brevo (@getbrevo/brevo)** | Transactional Reminder & OTP Email Service |
+| **Server-Sent Events (SSE)** | Low-Latency Real-Time Server-to-Client Event Streaming |
+
+### Infrastructure, DevOps & Monitoring
+| Technology | Purpose |
+|---|---|
+| **Docker & Docker Compose** | Multi-Container Orchestration (App, Redis, PostgreSQL, Loki, Grafana) |
+| **AWS EC2 (Free Tier)** | Production Host Server |
+| **Nginx** | Reverse Proxy, SSL Termination, & SSE Buffer Management |
+| **GitHub Actions** | Automated CI/CD Deployment Pipeline via SSH |
+| **Grafana & Grafana Cloud** | Log Aggregation, Querying, & Visual Dashboards |
 
 ---
 
@@ -60,94 +113,99 @@ A full-stack web application that helps users manage product warranties by uploa
 
 ```
 CheckMyWarranty/
+├── .github/
+│   └── workflows/
+│       └── deploy.yml            # GitHub Actions CI/CD deployment pipeline
+│
 ├── backend/
-│   ├── index.js                  # Express server entry point
-│   ├── connection.js             # PostgreSQL pool connection
-│   ├── package.json
+│   ├── config/
+│   │   ├── redis.js              # Redis client connection configuration
+│   │   └── sse.js                # Server-Sent Events client registry & dispatcher
 │   ├── controller/
-│   │   ├── manageData.js         # Upload, delete, fetch documents
-│   │   └── user.js               # Signup & login handlers
+│   │   ├── manageData.js         # Upload, delete, and cached fetch controllers
+│   │   └── user.js               # Auth, Refresh Tokens, and Password Reset (OTP)
+│   ├── grafana/
+│   │   └── provisioning/
+│   │       └── datasources/
+│   │           └── loki-datasource.yml # Auto-configured Grafana Loki datasource
 │   ├── middlewares/
-│   │   └── auth.js               # JWT authentication middleware
-│   ├── migrations/
-│   │   └── schema.sql            # Database schema (users, documents, reminders)
+│   │   └── auth.js               # Access Token & Bull Board Auth middlewares
+│   ├── prisma/
+│   │   └── schema.prisma         # Prisma ORM Database Schema
+│   ├── queues/
+│   │   └── reminderQueue.js      # BullMQ queue declaration for reminder jobs
 │   ├── routes/
-│   │   ├── manageData.js         # /api/data routes (auth-protected)
-│   │   └── user.js               # /api/user routes (public)
+│   │   ├── manageData.js         # Document management & SSE endpoint (/api/data)
+│   │   └── user.js               # Auth & Password Reset routes (/api/user)
 │   ├── services/
-│   │   ├── auth.js               # JWT sign & verify helpers
-│   │   ├── brevoEmailService.js  # Brevo transactional email sender
-│   │   ├── extractWarranty.js    # AI warranty detail extraction
-│   │   ├── reminderCron.js       # Cron job for processing reminders
-│   │   └── supabaseStorage.js    # Supabase Storage upload/delete/signed URLs
-│   └── uploads/                  # Local file storage (dev only)
-│
-├── frontend/
-│   ├── index.html
+│   │   ├── auth.js               # Access/Refresh JWT sign & verify helpers
+│   │   ├── brevoEmailService.js  # Brevo email delivery service
+│   │   ├── extractWarranty.js    # Groq AI document extraction service
+│   │   ├── otpService.js          # OTP generation & Redis verification helpers
+│   │   └── s3Storage.js          # AWS S3 upload, delete, and pre-signed URL helpers
+│   ├── workers/
+│   │   └── reminderWorker.js     # BullMQ background worker executing email jobs
+│   ├── connection.js             # Prisma Client instance
+│   ├── docker-compose.yml        # Development environment Docker Compose
+│   ├── docker-compose.prod.yml   # Production environment Docker Compose
+│   ├── Dockerfile                # Production multi-stage Docker build file
+│   ├── index.js                  # Express app entry point
+│   ├── logger.js                 # Pino logger with pino-loki transport
 │   ├── package.json
-│   ├── vite.config.js
-│   └── src/
-│       ├── App.jsx               # Router & layout setup
-│       ├── main.jsx              # React entry point
-│       ├── context/
-│       │   └── AuthContext.jsx   # Auth state management
-│       ├── components/
-│       │   ├── dashboard/
-│       │   │   └── FilePreviewModal.jsx
-│       │   ├── layout/
-│       │   │   ├── AuthLayout.jsx
-│       │   │   ├── DashboardLayout.jsx
-│       │   │   └── Navbar.jsx
-│       │   ├── routes/
-│       │   │   ├── PrivateRoute.jsx
-│       │   │   └── PublicRoute.jsx
-│       │   └── ui/
-│       │       ├── Button.jsx
-│       │       ├── InputField.jsx
-│       │       └── Spinner.jsx
-│       ├── hooks/
-│       │   └── useFormValidation.js
-│       └── pages/
-│           ├── Dashboard.jsx     # Main document management page
-│           ├── Login.jsx
-│           └── Register.jsx
+│   ├── .env                      # Local development environment variables
+│   └── .env.production           # Production environment variable template
 │
+├── frontend/                     # React 19 + Tailwind CSS frontend application
 └── README.md
 ```
 
 ---
 
-## 🗄️ Database Schema
+## 🔌 API Endpoints Reference
 
-The application uses **PostgreSQL** with three tables:
+### Authentication & Password Reset (`/api/user`)
+| Method | Endpoint | Description | Auth Required |
+|---|---|---|---|
+| `POST` | `/api/user/signup` | Register a new user account | ❌ No |
+| `POST` | `/api/user/login` | Authenticate user & issue Access/Refresh tokens | ❌ No |
+| `POST` | `/api/user/refresh` | Issue new Access Token using valid Refresh Token | ❌ No |
+| `GET` | `/api/user/me` | Fetch authenticated user profile details |  Yes |
+| `POST` | `/api/user/forgot-password` | Send OTP email for password reset | ❌ No |
+| `POST` | `/api/user/verify-otp` | Verify 6-digit OTP & receive reset token | ❌ No |
+| `POST` | `/api/user/reset-password` | Update password using reset token | ❌ No |
+| `POST` | `/api/user/logout` | Revoke session & clear cookies |  Yes |
 
-- **users** — Stores user accounts (`id`, `email`, `password_hash`, `created_at`)
-- **documents** — Stores uploaded warranty documents linked to users (`id`, `user_id`, `file_url`, `original_filename`, `expiry_date`, `created_at`)
-- **reminders** — Stores scheduled reminders linked to users and documents (`id`, `user_id`, `document_id`, `remind_at`, `status`, `created_at`)
+### Document Management & Real-Time Events (`/api/data`)
+| Method | Endpoint | Description | Auth Required |
+|---|---|---|---|
+| `POST` | `/api/data/upload` | Upload warranty document (multipart/form-data) |  Yes |
+| `GET` | `/api/data/getAll` | Retrieve all documents for user (Served via Redis cache) |  Yes |
+| `GET` | `/api/data/getOne/:documentId` | Fetch single document details with S3 pre-signed URL |  Yes |
+| `DELETE` | `/api/data/remove` | Delete document from database & S3 storage |  Yes |
+| `GET` | `/api/data/events` | **Server-Sent Events (SSE)** endpoint for processing status |  Yes |
 
-Run `backend/migrations/schema.sql` to initialize the database.
+### Monitoring & Operations
+| Method | Endpoint | Description | Auth Required |
+|---|---|---|---|
+| `GET` | `/health` | Application & Database connectivity check | ❌ No |
+| `GET` | `/admin/queues` | **Bull Board UI** for background reminder queue | 🔐 Basic Auth |
 
 ---
 
-## 🔌 API Endpoints
+## ⚡ Redis & Caching Strategy
 
-### Authentication (`/api/user`)
-| Method | Endpoint | Description |
-|---|---|---|
-| POST | `/api/user/signup` | Register a new user |
-| POST | `/api/user/login` | Login and receive JWT token |
+The backend leverages Redis for three distinct operational roles:
 
-### Document Management (`/api/data`) — *Requires Authentication*
-| Method | Endpoint | Description |
-|---|---|---|
-| POST | `/api/data/upload` | Upload a warranty document (multipart/form-data) |
-| GET | `/api/data/getAll` | Fetch all documents for the logged-in user |
-| DELETE | `/api/data/remove` | Delete a document by ID |
-
-### Health Check
-| Method | Endpoint | Description |
-|---|---|---|
-| GET | `/health` | Check database connectivity |
+1. **Document & S3 URL Caching:** 
+   - Requests to `/api/data/getAll` check Redis key `documents:<user_id>`.
+   - Pre-signed S3 URLs are cached with expiration matching the URL validity to eliminate redundant S3 signing overhead.
+   - Cache invalidation occurs automatically whenever a new file is uploaded or deleted.
+2. **Session Security & Password Resets:**
+   - OTP codes are stored with a strict **5-minute expiration window**.
+   - OTP verification issues a short-lived **reset token** stored in Redis with 10-minute expiration to prevent unauthorized password updates.
+3. **Queue Backbone (BullMQ):**
+   - Stores scheduled reminder jobs persistently in Redis data structures.
+   - Guarantees zero job loss even if the Node.js app container restarts.
 
 ---
 
@@ -156,50 +214,56 @@ Run `backend/migrations/schema.sql` to initialize the database.
 ### Backend (`backend/.env`)
 
 ```env
-# Database
-PGURL=postgresql://user:password@host:port/dbname
+# Server Mode & Port
+mode=development # or "production"
+LOG_LEVEL=info
 
-# Auth
-secret=your_jwt_secret
+# PostgreSQL (Prisma)
+DATABASE_URL=postgresql://postgres:postgres@localhost:5432/checkmywarranty?schema=public
 
-# Mode
-mode=development   # or "production"
+# JWT Authentication
+ACCESS_TOKEN_SECRET=your_access_token_secret
+REFRESH_TOKEN_SECRET=your_refresh_token_secret
+secret=your_legacy_secret
 
-# Frontend URL (CORS)
-FRONTEND_URL=http://localhost:5173
+# Redis Configuration
+REDIS_HOST=localhost
+REDIS_PORT=6379
+BULL_BOARD_PASSWORD=your_admin_dashboard_password
 
-# AI Extraction
+# Groq AI Service
 GROQ_API=your_groq_api_key
 
-# Email (Brevo)
+# Brevo Email Service
 BREVO_API=your_brevo_api_key
-BREVO_SENDER_EMAIL=noreply@yourdomain.com
+BREVO_SENDER_EMAIL=team@checkmywarranty.mentalorbit.tech
 BREVO_SENDER_NAME=CheckMyWarranty
 
-# Supabase Storage (production only)
-SUPABASE_URL=https://your-project.supabase.co
-SERVICE_ROLE=your_supabase_service_role_key
-SUPABASE_BUCKET=your_bucket_name
-```
+# AWS S3 Storage (Production)
+AWS_REGION=ap-south-1
+AWS_S3_BUCKET=your_s3_bucket_name
+AWS_ACCESS_KEY_ID=your_aws_access_key
+AWS_SECRET_ACCESS_KEY=your_aws_secret_key
 
-### Frontend (`frontend/.env`)
+# Loki & Grafana Logging
+LOKI_HOST=http://127.0.0.1:3100
+# LOKI_AUTH_USER=
+# LOKI_AUTH_PASSWORD=
 
-```env
-VITE_API_URL=http://localhost:3000/api
-VITE_MODE=development
+# Frontend Origin (CORS)
+FRONTEND_URL=http://localhost:5173
 ```
 
 ---
 
-## 🚀 Getting Started
+## 🚀 Local Development Setup (Using Docker)
 
 ### Prerequisites
 
-- **Node.js** (v18+)
-- **PostgreSQL** database
-- **Groq API key** — [Get one here](https://console.groq.com/)
-- **Brevo API key** — [Get one here](https://www.brevo.com/)
-- **Supabase project** (optional, for production file storage)
+- **Node.js** (v20+)
+- **Docker & Docker Compose**
+- **Groq API Key** ([Get one here](https://console.groq.com/))
+- **Brevo API Key** ([Get one here](https://www.brevo.com/))
 
 ### 1. Clone the repository
 
@@ -208,61 +272,106 @@ git clone https://github.com/CipherHitro/CheckMyWarranty.git
 cd CheckMyWarranty
 ```
 
-### 2. Set up the database
+### 2. Configure Environment Files
 
-Create a PostgreSQL database and run the schema migration:
+Create `.env` in `backend/` and `frontend/` directories:
 
 ```bash
-psql -U your_user -d your_database -f backend/migrations/schema.sql
+cp backend/.env.production backend/.env
 ```
 
-### 3. Configure environment variables
+### 3. Launch Local Development Containers
 
-Create `.env` files in both `backend/` and `frontend/` directories using the templates above.
-
-### 4. Install dependencies
+Run Docker Compose to start PostgreSQL, Redis, RedisInsight, Loki, and Grafana:
 
 ```bash
-# Backend
 cd backend
-npm install
-
-# Frontend
-cd ../frontend
-npm install
+docker compose up -d
 ```
 
-### 5. Start the development servers
+### 4. Run Database Migrations
+
+Apply Prisma schema migrations to your local containerized PostgreSQL:
 
 ```bash
-# Backend (from backend/)
-npm run dev
-
-# Frontend (from frontend/)
-npm run dev
+npx prisma migrate dev
 ```
 
-The backend runs on `http://localhost:3000` and the frontend on `http://localhost:5173`.
+### 5. Access Local Services
+
+- **Backend Server:** `http://localhost:3000`
+- **Frontend App:** `http://localhost:5173`
+- **Grafana Dashboard:** `http://localhost:3001` *(Default credentials: `admin` / `admin` - Loki datasource pre-configured)*
+- **RedisInsight:** `http://localhost:5540`
+- **Bull Board UI:** `http://localhost:3000/admin/queues`
 
 ---
 
-## 🔄 How It Works
+## ☁️ Production Deployment & CI/CD
 
-1. **User registers/logs in** → JWT token is issued and stored as a cookie.
-2. **User uploads a warranty document** → File is saved (locally or to Supabase) and a database record is created.
-3. **AI extraction runs in the background** → The document is analyzed by Groq LLMs to extract the warranty expiry date.
-4. **Reminder is automatically created** → Based on the expiry date, reminders are scheduled at 7 days and 3 days before expiry.
-5. **Cron job processes reminders daily** → Sends styled HTML emails via Brevo to notify users of upcoming warranty expirations.
-6. **Dashboard auto-polls** → The frontend polls every 4 seconds for documents with pending AI extraction, updating the UI when results are ready.
+### 1. AWS Infrastructure Setup
+- **EC2 Instance:** Ubuntu t2.micro / t3.micro.
+- **AWS RDS:** PostgreSQL instance for database durability.
+- **AWS S3 Bucket:** Private S3 bucket with IAM credentials configured for pre-signed URLs.
+
+### 2. Nginx Reverse Proxy Configuration (EC2)
+
+To ensure **Server-Sent Events (SSE)** function without proxy buffer delays, configure Nginx as follows:
+
+```nginx
+server {
+    server_name api.yourdomain.com;
+
+    location / {
+        proxy_pass http://127.0.0.1:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_cache_bypass $http_upgrade;
+    }
+
+    # SSE Stream Configuration (Bypass Buffering)
+    location /api/data/events {
+        proxy_pass http://127.0.0.1:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Connection '';
+        proxy_set_header Host $host;
+        proxy_buffering off;
+        proxy_cache off;
+        chunked_transfer_encoding off;
+    }
+}
+```
+
+### 3. GitHub Actions CI/CD Pipeline
+
+Deployments are fully automated via GitHub Actions (`.github/workflows/deploy.yml`). On every push to `main`:
+
+1. GitHub Actions connects to the EC2 server over SSH.
+2. Pulls the latest commit from `main`.
+3. Injects GitHub Repository Secrets into `.env`.
+4. Executes zero-downtime container builds: `docker compose -f docker-compose.prod.yml build`.
+5. Runs Prisma database migrations: `docker compose -f docker-compose.prod.yml run --rm app npx prisma migrate deploy`.
+6. Starts updated containers in detached mode and prunes stale Docker images.
+
+---
+
+## 📊 Logging & Observability
+
+`CheckMyWarranty` uses **Pino** and `pino-loki` for structured log management:
+
+- **Development:** Pino logs are shipped to the local `loki` container (`http://127.0.0.1:3100`) and visually queried in local Grafana (`http://localhost:3001`).
+- **Production (Grafana Cloud):** To preserve the memory constraints of AWS EC2 Free Tier instances, local Loki and Grafana containers are omitted in `docker-compose.prod.yml`. Instead, the app streams logs directly over HTTPS to **Grafana Cloud Loki** using `LOKI_HOST`, `LOKI_AUTH_USER`, and `LOKI_AUTH_PASSWORD`.
 
 ---
 
 ## 📄 License
 
-ISC
+This project is licensed under the **ISC License**.
 
 ---
 
 ## 👤 Author
 
-**Rohit Rathod** — [GitHub](https://github.com/CipherHitro)
+**Rohit Rathod** — [GitHub Profile](https://github.com/CipherHitro)
