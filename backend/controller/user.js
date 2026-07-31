@@ -11,6 +11,7 @@ import { getUser } from "../services/auth.js";
 import jwt from "jsonwebtoken";
 import { generateAndStoreOtp, verifyOtp, issueResetToken, consumeResetToken } from "../services/otpService.js";
 import { sendOtpEmail } from "../services/brevoEmailService.js";
+import { authRateLimiter } from "../middlewares/rateLimiter.js";
 import logger from "../logger.js";
 import 'dotenv/config';
 
@@ -115,6 +116,10 @@ async function handleLogin(req, res) {
       path: "/",
       maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
     });
+
+    // Reset rate limiter on successful login
+    const rateLimitKey = `${req.ip}_${email}`;
+    await authRateLimiter.delete(rateLimitKey).catch(() => {});
 
     logger.info({ email, userId: Number(user.id) }, "Login successful");
     return res.status(200).json({ message: "Logged in!" });
