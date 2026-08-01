@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import {
   ShieldCheck,
-  LayoutDashboard,
+  MessageSquare,
   LogOut,
   Menu,
   X,
@@ -10,7 +10,7 @@ import {
 } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 
-const Navbar = () => {
+const Navbar = ({ onOpenChat }) => {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -35,13 +35,13 @@ const Navbar = () => {
 
         {/* Desktop nav */}
         <nav className="hidden md:flex items-center gap-6">
-          <Link
-            to="/dashboard"
-            className="flex items-center gap-1.5 text-sm font-medium text-surface-600 hover:text-primary-600 transition-colors"
+          <button
+            onClick={onOpenChat}
+            className="flex items-center gap-1.5 text-sm font-medium text-surface-600 hover:text-primary-600 transition-colors cursor-pointer"
           >
-            <LayoutDashboard size={16} />
-            Dashboard
-          </Link>
+            <MessageSquare size={16} />
+            Chat
+          </button>
 
           <div className="flex items-center gap-3 pl-4 border-l border-surface-200">
             <div className="flex items-center gap-2">
@@ -84,14 +84,16 @@ const Navbar = () => {
             </span>
           </div>
 
-          <Link
-            to="/dashboard"
-            onClick={() => setMobileOpen(false)}
-            className="flex items-center gap-2 text-sm text-surface-600 hover:text-primary-600 py-1"
+          <button
+            onClick={() => {
+              setMobileOpen(false);
+              onOpenChat();
+            }}
+            className="flex items-center gap-2 text-sm text-surface-600 hover:text-primary-600 py-1 cursor-pointer"
           >
-            <LayoutDashboard size={16} />
-            Dashboard
-          </Link>
+            <MessageSquare size={16} />
+            Chat
+          </button>
 
           <button
             onClick={() => {
