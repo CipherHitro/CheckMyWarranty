@@ -39,7 +39,6 @@ async function chatWithDocuments({ userId, question }) {
     const systemPrompt = `You are a helpful assistant that answers questions about warranty documents.
 Use the following retrieved context from the user's warranty documents to answer their question.
 If the context doesn't contain enough information to answer, say so clearly.
-Always cite which chunk(s) you used for your answer.
 
 Retrieved Context:
 ${context}`;
