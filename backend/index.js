@@ -8,6 +8,7 @@ import logger from "./logger.js";
 import pinoHttp from "pino-http";
 import userRoute from "./routes/user.js";
 import manageDataRoute from './routes/manageData.js';
+import chatRoute from './routes/chat.js';
 import { authenticateUser, boardAuth } from './middlewares/auth.js';
 import { testBrevoConnection } from "./services/brevoEmailService.js";
 import { reminderQueue } from './queues/reminderQueue.js';
@@ -79,6 +80,7 @@ app.use('/admin/queues', boardAuth, serverAdapter.getRouter());
 // Routes
 app.use("/api/user", userRoute);
 app.use('/api/data', authenticateUser, manageDataRoute);
+app.use('/api/chat', authenticateUser, chatRoute);
 
 app.get("/health", async (req, res) => {
   try {
