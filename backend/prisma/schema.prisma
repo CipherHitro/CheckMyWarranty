@@ -8,13 +8,14 @@ datasource db {
 }
 
 model documents {
-  id                BigInt      @id @default(autoincrement())
+  id                BigInt            @id @default(autoincrement())
   user_id           BigInt
   file_url          String
   original_filename String?
-  expiry_date       DateTime?   @db.Date
-  created_at        DateTime?   @default(now()) @db.Timestamp(6)
-  users             users       @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_user")
+  expiry_date       DateTime?         @db.Date
+  rag_status        String?           @default("pending") @db.VarChar(20)
+  created_at        DateTime?         @default(now()) @db.Timestamp(6)
+  users             users             @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_user")
   reminders         reminders[]
 }
 
@@ -30,10 +31,22 @@ model reminders {
 }
 
 model users {
-  id            BigInt      @id @default(autoincrement())
-  email         String      @unique @db.VarChar(255)
-  password_hash String
-  created_at    DateTime?   @default(now()) @db.Timestamp(6)
-  documents     documents[]
-  reminders     reminders[]
+  id              BigInt            @id @default(autoincrement())
+  email           String            @unique @db.VarChar(255)
+  password_hash   String
+  created_at      DateTime?         @default(now()) @db.Timestamp(6)
+  documents       documents[]
+  reminders       reminders[]
+}
+
+model document_chunks {
+  id          BigInt                      @id @default(autoincrement())
+  user_id     BigInt
+  document_id BigInt
+  content     String
+  embedding   Unsupported("vector(1024)")?
+  created_at  DateTime?                   @default(now()) @db.Timestamp(6)
+
+  @@index([document_id], map: "idx_document_chunks_document_id")
+  @@index([user_id], map: "idx_document_chunks_user_id")
 }
