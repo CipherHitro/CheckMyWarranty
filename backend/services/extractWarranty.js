@@ -19,22 +19,24 @@ async function extractPdfText(filePath) {
 }
 
 // ── Shared prompt ───────────────────────────────────────────────
-const EXTRACTION_PROMPT = `You are a warranty document data extractor.
-Analyse the provided document content and extract the following fields:
+const EXTRACTION_PROMPT = `You are a warranty document data extractor and OCR reader.
+Analyse the provided document content or image and extract the following fields:
 - purchase_date   (the date the item was purchased)
 - item_name       (the product / item name)
 - expiry_date     (warranty expiration date)
+- content         (the full and complete transcribed / extracted text of the entire document or image)
 
 Rules:
 1. If the expiration date is expressed as a duration (e.g. "1 year", "24 months"),
    calculate the exact calendar date by adding the duration to the purchase date.
 2. All dates MUST be in ISO format: YYYY-MM-DD.
-3. If a field cannot be determined, set its value to null.
-4. Return ONLY a valid JSON object with exactly these three keys — no markdown,
+3. For "content", transcribe all text visible in the document/image cleanly and completely.
+4. If a metadata field cannot be determined, set its value to null.
+5. Return ONLY a valid JSON object with exactly these four keys — no markdown,
    no explanation, no extra text.
 
 Example output:
-{"purchase_date":"2024-06-15","item_name":"Samsung Galaxy S24","expiry_date":"2026-06-15"}`;
+{"purchase_date":"2024-06-15","item_name":"Samsung Galaxy S24","expiry_date":"2026-06-15","content":"INVOICE #1029\nItem: Samsung Galaxy S24\nPurchase Date: 2024-06-15\nWarranty: 2 Years\nStore: Electronics World"}`;
 
 // ─────────────────────────────────────────────────────────────────
 //  1. Text-based PDF  →  llama-3.1-8b-instant (text only)
@@ -50,10 +52,16 @@ async function extractFromText(text) {
             },
         ],
         temperature: 0.1,
-        max_tokens: 512,
+        max_tokens: 2048,
     });
 
-    return parseLLMResponse(chat.choices[0]?.message?.content);
+    const parsed = parseLLMResponse(chat.choices[0]?.message?.content);
+    if (parsed) {
+        if (!parsed.content || parsed.content.length < text.length) {
+            parsed.content = text;
+        }
+    }
+    return parsed;
 }
 
 // ─────────────────────────────────────────────────────────────────
@@ -86,7 +94,7 @@ async function extractFromScannedPDF(filePath) {
                 content: [
                     {
                         type: "text",
-                        text: "This is a screenshot of a scanned warranty / invoice document. Please extract the required fields.",
+                        text: "This is a screenshot of a scanned warranty / invoice document. Please extract the required fields and transcribe all text.",
                     },
                     {
                         type: "image_url",
@@ -96,7 +104,7 @@ async function extractFromScannedPDF(filePath) {
             },
         ],
         temperature: 0.1,
-        max_tokens: 512,
+        max_tokens: 2048,
     });
 
     return parseLLMResponse(chat.choices[0]?.message?.content);
@@ -119,7 +127,7 @@ async function extractFromImage(filePath, mimeType) {
                 content: [
                     {
                         type: "text",
-                        text: "This is a photo / screenshot of a warranty document or invoice. Please extract the required fields.",
+                        text: "This is a photo / screenshot of a warranty document or invoice. Please extract the required fields and transcribe all text.",
                     },
                     {
                         type: "image_url",
@@ -129,7 +137,7 @@ async function extractFromImage(filePath, mimeType) {
             },
         ],
         temperature: 0.1,
-        max_tokens: 512,
+        max_tokens: 2048,
     });
 
     return parseLLMResponse(chat.choices[0]?.message?.content);
@@ -152,12 +160,14 @@ function parseLLMResponse(raw) {
             purchase_date: parsed.purchase_date || null,
             item_name: parsed.item_name || null,
             expiry_date: parsed.expiry_date || null,
+            content: parsed.content || null,
         };
     } catch (err) {
         logger.error({ err, rawResponse: raw }, "Failed to parse LLM response");
         return null;
     }
 }
+
 
 // ─────────────────────────────────────────────────────────────────
 //  Main entry: decide route based on file type

@@ -9,6 +9,7 @@ import { createReminders } from "../services/reminderService.js";
 import { sendSseEventToUser } from "../config/sse.js";
 import { redisConnection } from "../config/redis.js";
 import { reminderQueue } from "../queues/reminderQueue.js";
+import { storeDocumentChunks } from "../services/documentChunkService.js";
 import "dotenv/config";
 
 const isProduction = process.env.mode === "production";
@@ -62,7 +63,7 @@ async function handleAddFile(req, res) {
 
         logger.info({ documentId: Number(document.id), originalFilename }, "Document record created");
 
-        // Step 2 — Kick off AI extraction in the background
+        // Step 2 — Kick off AI extraction & vector embeddings in the background
         extractWarrantyDetails(extractionFilePath, originalFilename)
             .then(async (extracted) => {
                 // Clean up temp file in production
@@ -70,52 +71,96 @@ async function handleAddFile(req, res) {
                     try { fs.unlinkSync(extractionFilePath); } catch (_) {}
                 }
 
-                if (extracted && extracted.expiry_date) {
-                    // Convert date string (YYYY-MM-DD) to a Date object for Prisma
-                    const expiryDateObj = new Date(extracted.expiry_date + "T00:00:00.000Z");
-                    await prisma.documents.update({
-                        where: { id: document.id },
-                        data: { expiry_date: expiryDateObj },
-                    });
-                    logger.info(
-                        { documentId: Number(document.id), expiryDate: extracted.expiry_date },
-                        "Expiry date extracted and updated"
-                    );
+                if (extracted) {
+                    // Update expiry date if extracted
+                    if (extracted.expiry_date) {
+                        const expiryDateObj = new Date(extracted.expiry_date + "T00:00:00.000Z");
+                        await prisma.documents.update({
+                            where: { id: document.id },
+                            data: { expiry_date: expiryDateObj },
+                        });
+                        logger.info(
+                            { documentId: Number(document.id), expiryDate: extracted.expiry_date },
+                            "Expiry date extracted and updated"
+                        );
 
-                    // ── Create reminders in the DB and schedule email jobs ──
-                    try {
-                        await createReminders(
-                            userId,
-                            document.id,
-                            req.user.email,
-                            originalFilename,
-                            extracted.expiry_date
+                        // ── Create reminders in the DB and schedule email jobs ──
+                        try {
+                            await createReminders(
+                                userId,
+                                document.id,
+                                req.user.email,
+                                originalFilename,
+                                extracted.expiry_date
+                            );
+                        } catch (reminderErr) {
+                            logger.error(
+                                { err: reminderErr, documentId: Number(document.id) },
+                                "Failed to create reminders"
+                            );
+                        }
+
+                        // ── Notify the user via SSE ──
+                        sendSseEventToUser(userId, "extraction-complete", {
+                            documentId: Number(document.id),
+                            expiry_date: extracted.expiry_date,
+                        });
+                    } else {
+                        logger.warn(
+                            { documentId: Number(document.id) },
+                            "Could not extract expiry date from document"
                         );
-                    } catch (reminderErr) {
-                        logger.error(
-                            { err: reminderErr, documentId: Number(document.id) },
-                            "Failed to create reminders"
-                        );
+
+                        // ── Notify the user via SSE that extraction found no date ──
+                        sendSseEventToUser(userId, "extraction-no-date", {
+                            documentId: Number(document.id),
+                        });
                     }
 
-                    // ── Notify the user via SSE ──
-                    sendSseEventToUser(userId, "extraction-complete", {
-                        documentId: Number(document.id),
-                        expiry_date: extracted.expiry_date,
-                    });
-                } else {
-                    logger.warn(
-                        { documentId: Number(document.id) },
-                        "Could not extract expiry date from document"
-                    );
+                    // ── RAG Pipeline: Store Document Chunks & Vector Embeddings ──
+                    if (extracted.content) {
+                        try {
+                            await storeDocumentChunks({
+                                userId,
+                                documentId: document.id,
+                                content: extracted.content,
+                            });
 
-                    // ── Notify the user via SSE that extraction found no date ──
-                    sendSseEventToUser(userId, "extraction-no-date", {
-                        documentId: Number(document.id),
-                    });
+                            // RAG pipeline succeeded — document is now searchable
+                            await prisma.documents.update({
+                                where: { id: document.id },
+                                data: { rag_status: "ready" },
+                            });
+                            logger.info(
+                                { documentId: Number(document.id) },
+                                "RAG status updated to ready"
+                            );
+                        } catch (chunkErr) {
+                            logger.error(
+                                { err: chunkErr, documentId: Number(document.id) },
+                                "Failed to store document vector chunks"
+                            );
+
+                            // RAG pipeline failed — mark document as not searchable
+                            await prisma.documents.update({
+                                where: { id: document.id },
+                                data: { rag_status: "failed" },
+                            });
+                        }
+                    } else {
+                        // No content to embed — document is not searchable
+                        await prisma.documents.update({
+                            where: { id: document.id },
+                            data: { rag_status: "failed" },
+                        });
+                        logger.warn(
+                            { documentId: Number(document.id) },
+                            "No content extracted — RAG status set to failed"
+                        );
+                    }
                 }
             })
-            .catch((err) => {
+            .catch(async (err) => {
                 // Clean up temp file in production on error too
                 if (isProduction) {
                     try { fs.unlinkSync(extractionFilePath); } catch (_) {}
@@ -124,7 +169,21 @@ async function handleAddFile(req, res) {
                     { err, documentId: Number(document.id) },
                     "Extraction error"
                 );
+
+                // Extraction failed — mark document as not searchable
+                try {
+                    await prisma.documents.update({
+                        where: { id: document.id },
+                        data: { rag_status: "failed" },
+                    });
+                } catch (updateErr) {
+                    logger.error(
+                        { err: updateErr, documentId: Number(document.id) },
+                        "Failed to update rag_status after extraction error"
+                    );
+                }
             });
+
 
         // Respond immediately (extraction runs in background)
         return res.status(201).json({
