@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from "react";
+import ReactMarkdown from "react-markdown";
 import { X, Send, Bot, Loader2 } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 
@@ -126,13 +127,69 @@ const ChatBot = ({ open, onClose }) => {
               className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
             >
               <div
-                className={`max-w-[80%] px-3.5 py-2.5 rounded-2xl text-sm leading-relaxed shadow-sm ${
+                className={`max-w-[85%] px-3.5 py-2.5 rounded-2xl text-sm leading-relaxed shadow-sm ${
                   msg.role === "user"
                     ? "bg-primary-600 text-white rounded-br-md"
                     : "bg-white text-surface-800 rounded-bl-md border border-surface-200"
                 }`}
               >
-                {msg.content}
+                {msg.role === "assistant" ? (
+                  <div className="chat-markdown">
+                    <ReactMarkdown
+                      components={{
+                        h1: ({ node, ...props }) => (
+                          <h3 className="text-base font-bold mt-2 mb-1 text-primary-700" {...props} />
+                        ),
+                        h2: ({ node, ...props }) => (
+                          <h3 className="text-base font-bold mt-2 mb-1 text-primary-700" {...props} />
+                        ),
+                        h3: ({ node, ...props }) => (
+                          <h4 className="text-sm font-bold mt-2 mb-1 text-primary-700" {...props} />
+                        ),
+                        h4: ({ node, ...props }) => (
+                          <h4 className="text-sm font-semibold mt-2 mb-1 text-primary-700" {...props} />
+                        ),
+                        p: ({ node, ...props }) => (
+                          <p className="mb-1.5 last:mb-0" {...props} />
+                        ),
+                        ul: ({ node, ...props }) => (
+                          <ul className="list-disc pl-4 mb-1.5 space-y-0.5" {...props} />
+                        ),
+                        ol: ({ node, ...props }) => (
+                          <ol className="list-decimal pl-4 mb-1.5 space-y-0.5" {...props} />
+                        ),
+                        li: ({ node, ...props }) => (
+                          <li className="leading-relaxed" {...props} />
+                        ),
+                        strong: ({ node, ...props }) => (
+                          <strong className="font-bold text-primary-700" {...props} />
+                        ),
+                        em: ({ node, ...props }) => (
+                          <em className="italic" {...props} />
+                        ),
+                        code: ({ node, ...props }) => (
+                          <code className="bg-surface-100 px-1 py-0.5 rounded text-xs font-mono" {...props} />
+                        ),
+                        pre: ({ node, ...props }) => (
+                          <pre className="bg-surface-100 p-2 rounded-lg text-xs font-mono overflow-x-auto my-1.5" {...props} />
+                        ),
+                        hr: ({ node, ...props }) => (
+                          <hr className="border-surface-200 my-2" {...props} />
+                        ),
+                        a: ({ node, ...props }) => (
+                          <a className="text-primary-600 underline" target="_blank" rel="noopener noreferrer" {...props} />
+                        ),
+                        blockquote: ({ node, ...props }) => (
+                          <blockquote className="border-l-2 border-primary-300 pl-2 italic text-surface-600 my-1.5" {...props} />
+                        ),
+                      }}
+                    >
+                      {msg.content}
+                    </ReactMarkdown>
+                  </div>
+                ) : (
+                  msg.content
+                )}
               </div>
             </div>
           ))}
