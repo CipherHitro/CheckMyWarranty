@@ -1,5 +1,4 @@
 -- AlterTable
-CREATE EXTENSION IF NOT EXISTS vector;
 ALTER TABLE "documents" ADD COLUMN     "rag_status" VARCHAR(20) DEFAULT 'pending';
 
 -- CreateTable

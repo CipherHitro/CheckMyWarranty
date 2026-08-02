@@ -1,5 +1,4 @@
 -- CreateTable
-CREATE EXTENSION IF NOT EXISTS vector;
 
 CREATE TABLE "documents" (
     "id" BIGSERIAL NOT NULL,
