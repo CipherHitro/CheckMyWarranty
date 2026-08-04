@@ -81,4 +81,60 @@ async function generateEmbeddings(texts, inputType) {
     return allEmbeddings;
 }
 
-export { generateEmbeddings, EMBEDDING_DIM };
+/**
+ * Generate an embedding for a single image using Cohere's embed-v4.0 model.
+ *
+ * Cohere's image embedding endpoint accepts exactly ONE image per call and
+ * requires the image as a data URI (data:mimeType;base64,...). Supported
+ * formats: image/jpeg, image/png, image/webp, image/gif (max 5MB).
+ *
+ * @param {string} imageDataUrl - Data URI of the image, e.g. "data:image/jpeg;base64,/9j/..."
+ * @returns {Promise<number[]>} Embedding vector for the image
+ * @throws {Error} If the Cohere API call fails — the error propagates so the
+ *   caller (e.g. a BullMQ job) can retry.
+ */
+async function generateImageEmbedding(imageDataUrl) {
+  if (!imageDataUrl || typeof imageDataUrl !== "string" || !imageDataUrl.startsWith("data:")) {
+    throw new Error("generateImageEmbedding requires a valid data URI");
+  }
+
+  try {
+    const response = await cohere.v2.embed({
+      model: EMBEDDING_MODEL,
+      images: [imageDataUrl],
+      inputType: "image",
+      outputDimension: EMBEDDING_DIM,
+      embeddingTypes: ["float"],
+    });
+
+    let embeddings;
+    if (response.responseType === "embeddings_floats") {
+      embeddings = response.embeddings;
+    } else if (response.responseType === "embeddings_by_type") {
+      embeddings = response.embeddings?.float;
+    } else {
+      throw new Error(`Unexpected Cohere response type: ${response.responseType}`);
+    }
+
+    if (!Array.isArray(embeddings) || embeddings.length !== 1) {
+      throw new Error(
+        `Image embedding count mismatch: expected 1, got ${embeddings?.length ?? "undefined"}`
+      );
+    }
+
+    logger.debug(
+      { model: EMBEDDING_MODEL, dim: EMBEDDING_DIM, inputType: "image" },
+      "Generated image embedding via Cohere API"
+    );
+
+    return embeddings[0];
+  } catch (err) {
+    logger.error(
+      { error: err.message || err, model: EMBEDDING_MODEL, inputType: "image" },
+      "Cohere API image embedding call failed"
+    );
+    throw err;
+  }
+}
+
+export { generateEmbeddings, generateImageEmbedding, EMBEDDING_DIM };
