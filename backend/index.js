@@ -12,9 +12,10 @@ import chatRoute from './routes/chat.js';
 import { authenticateUser, boardAuth } from './middlewares/auth.js';
 import { testBrevoConnection } from "./services/brevoEmailService.js";
 import { reminderQueue } from './queues/reminderQueue.js';
-import { documentQueue } from './queues/documentQueue.js';
+import { extractionQueue, embeddingQueue } from './queues/documentQueue.js';
 import "./workers/reminderWorker.js"; // starts the worker as a side-effect
-import "./workers/documentWorker.js"; // starts the document processing worker
+import "./workers/extractionWorker.js"; // starts the expiry date extraction worker
+import "./workers/embeddingWorker.js"; // starts the independent RAG embedding worker
 import { recoverPendingJobs } from './services/jobRecoveryService.js';
 import { shouldIgnoreRequest } from './utils/logFilter.js';
 import { createBullBoard } from '@bull-board/api';
@@ -74,7 +75,11 @@ app.use('/uploads', express.static(path.join(import.meta.dirname, 'uploads')));
 const serverAdapter = new ExpressAdapter();
 serverAdapter.setBasePath('/admin/queues');
 createBullBoard({
-  queues: [new BullMQAdapter(reminderQueue), new BullMQAdapter(documentQueue)],
+  queues: [
+    new BullMQAdapter(reminderQueue),
+    new BullMQAdapter(extractionQueue),
+    new BullMQAdapter(embeddingQueue),
+  ],
   serverAdapter,
 });
 app.use('/admin/queues', boardAuth, serverAdapter.getRouter());
@@ -101,7 +106,8 @@ app.get('/', (req, res) => {
 app.listen(port, () => {
   logger.info({ port }, "Server started");
   logger.info("Reminder worker started — listening for email jobs");
-  logger.info("Document worker started — processing extraction & embedding jobs one at a time");
+  logger.info("Extraction worker started — processing expiry date extraction jobs one at a time");
+  logger.info("Embedding worker started — processing RAG embedding jobs one at a time");
   logger.info('Bull Board UI available at /admin/queues');
   testBrevoConnection();
 

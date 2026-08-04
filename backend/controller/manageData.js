@@ -6,7 +6,12 @@ import logger from "../logger.js";
 import { uploadToS3, deleteFromS3, getSignedS3Url } from "../services/s3Storage.js";
 import { redisConnection } from "../config/redis.js";
 import { reminderQueue } from "../queues/reminderQueue.js";
-import { documentQueue, addDocumentJob } from "../queues/documentQueue.js";
+import {
+  extractionQueue,
+  embeddingQueue,
+  addExtractionJob,
+  addEmbeddingJob,
+} from "../queues/documentQueue.js";
 import "dotenv/config";
 
 const isProduction = process.env.mode === "production";
@@ -21,6 +26,7 @@ async function handleAddFile(req, res) {
 
         let fileUrl;
         let extractionFilePath;
+        let embeddingFilePath;
         const originalFilename = req.file.originalname;
 
         if (isProduction) {
@@ -35,15 +41,27 @@ async function handleAddFile(req, res) {
                 req.file.mimetype
             );
 
-            // Write buffer to a temp file for AI extraction
-            extractionFilePath = path.join(os.tmpdir(), storageName);
+            // ── Write TWO temp file copies ──
+            // The extraction worker and the embedding worker run
+            // independently and each deletes its own temp copy after
+            // processing. We cannot share one file because whichever
+            // worker finishes first would delete it for the other.
+            const baseTemp = path.join(os.tmpdir(), storageName);
+
+            extractionFilePath = `${baseTemp}.extract`;
             fs.writeFileSync(extractionFilePath, req.file.buffer);
+
+            embeddingFilePath = `${baseTemp}.embed`;
+            fs.writeFileSync(embeddingFilePath, req.file.buffer);
 
             logger.debug({ storageName, userId: Number(userId) }, "File uploaded to S3");
         } else {
             // ── Development: file is already on disk via multer diskStorage ──
             fileUrl = `/uploads/${req.file.filename}`;
             extractionFilePath = path.join(import.meta.dirname, "..", fileUrl);
+            // Workers do NOT delete files in dev, so both queues can share
+            // the same on-disk file safely.
+            embeddingFilePath = extractionFilePath;
 
             logger.debug({ filename: req.file.filename, userId: Number(userId) }, "File saved locally");
         }
@@ -60,17 +78,24 @@ async function handleAddFile(req, res) {
 
         logger.info({ documentId: Number(document.id), originalFilename }, "Document record created");
 
-        // Step 2 — Queue the document for AI extraction & vector embeddings
-        // The worker processes jobs one at a time (concurrency: 1) to avoid
-        // flooding the Groq/Cohere APIs when multiple users upload simultaneously.
+        // Step 2 — Queue TWO independent jobs (they run in parallel):
+        //   1. Expiry date extraction job (Groq) → updates expiry_date + reminders
+        //   2. Embedding job (Cohere) → RAG vector embeddings, fully independent
         // Convert BigInt IDs to Numbers — BullMQ uses JSON.stringify which
         // cannot serialize BigInt values
-        await addDocumentJob({
+        await addExtractionJob({
             documentId: Number(document.id),
             userId: Number(userId),
             userEmail: req.user.email,
             originalFilename,
             filePath: extractionFilePath,
+        });
+
+        await addEmbeddingJob({
+            documentId: Number(document.id),
+            userId: Number(userId),
+            originalFilename,
+            filePath: embeddingFilePath,
         });
 
         // Respond immediately (processing runs in the background via BullMQ)
@@ -135,10 +160,17 @@ async function handleRemoveFile(req, res) {
             }
         }
 
-        // Cancel any pending document processing job
+        // Cancel any pending extraction / embedding jobs for this document
         try {
-            await documentQueue.remove(`doc-${documentId}`);
-            logger.debug({ documentId }, "Pending document processing job removed from queue");
+            await extractionQueue.remove(`extract-${documentId}`);
+            logger.debug({ documentId }, "Pending extraction job removed from queue");
+        } catch (_) {
+            // Job may already be processed or not exist — ignore
+        }
+
+        try {
+            await embeddingQueue.remove(`embed-${documentId}`);
+            logger.debug({ documentId }, "Pending embedding job removed from queue");
         } catch (_) {
             // Job may already be processed or not exist — ignore
         }
