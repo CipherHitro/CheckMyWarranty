@@ -11,7 +11,7 @@ const groq = new Groq({ apiKey: process.env.GROQ_API });
 const MIN_TEXT_LENGTH = 80;
 
 // ── Helper: extract text from PDF using pdf-parse v2 ────────────
-async function extractPdfText(filePath) {
+export async function extractPdfText(filePath) {
     const dataBuffer = fs.readFileSync(filePath);
     const parser = new PDFParse({ data: dataBuffer });
     const result = await parser.getText();

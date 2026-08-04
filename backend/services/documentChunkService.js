@@ -1,5 +1,5 @@
 import prisma from "../connection.js";
-import { generateEmbeddings } from "./embeddingService.js";
+import { generateEmbeddings, generateImageEmbedding } from "./embeddingService.js";
 import logger from "../logger.js";
 
 /**
@@ -103,4 +103,70 @@ async function storeDocumentChunks({ userId, documentId, content }) {
     }
 }
 
-export { storeDocumentChunks, chunkText };
+/**
+ * Stores a single embedding for an image document (or a scanned PDF page
+ * rendered to an image) in the document_chunks table.
+ *
+ * A full-document image is stored as ONE chunk — the image is sent directly
+ * to Cohere's image embedding API (inputType "image") and the resulting
+ * vector is stored alongside a short descriptor. This makes image-only
+ * documents searchable without any text extraction step.
+ *
+ * Cohere stores the image embedding semantically, so a vector search can
+ * match this document against queries like "expiry date", "warranty period",
+ * "purchase date", etc.
+ *
+ * @param {Object} params
+ * @param {number|BigInt} params.userId - User ID
+ * @param {number|BigInt} params.documentId - Document ID
+ * @param {string} params.imageDataUrl - Data URI of the image to embed
+ * @param {string} [params.descriptor] - Short text descriptor stored alongside the embedding
+ * @returns {Promise<number>} 1 if the chunk was stored, 0 otherwise
+ */
+async function storeDocumentImageEmbedding({ userId, documentId, imageDataUrl, descriptor }) {
+    if (!userId || !documentId || !imageDataUrl) {
+        logger.warn(
+            { userId: Number(userId), documentId: Number(documentId) },
+            "storeDocumentImageEmbedding called with missing parameters"
+        );
+        return 0;
+    }
+
+    try {
+        const uId = BigInt(userId);
+        const dId = BigInt(documentId);
+
+        const embedding = await generateImageEmbedding(imageDataUrl);
+
+        const content =
+            descriptor ||
+            "Warranty / invoice document image. Includes purchase date, item name, expiry date and warranty terms.";
+
+        // Wrap delete-then-insert in a single transaction so the replacement is all-or-nothing
+        const stored = await prisma.$transaction(async (tx) => {
+            // Delete any existing chunks for this document (e.g., re-processing)
+            await tx.$executeRaw`DELETE FROM document_chunks WHERE document_id = ${dId}`;
+
+            const vectorString = `[${embedding.join(",")}]`;
+
+            await tx.$executeRaw`INSERT INTO document_chunks (user_id, document_id, content, embedding) VALUES (${uId}, ${dId}, ${content}, ${vectorString}::vector)`;
+
+            return 1;
+        });
+
+        logger.info(
+            { documentId: Number(dId), userId: Number(uId) },
+            "Document image embedding successfully stored"
+        );
+
+        return stored;
+    } catch (err) {
+        logger.error(
+            { err, documentId: Number(documentId), userId: Number(userId) },
+            "Failed to store document image embedding"
+        );
+        throw err;
+    }
+}
+
+export { storeDocumentChunks, storeDocumentImageEmbedding, chunkText };
