@@ -134,62 +134,23 @@ A full-stack, enterprise-grade web application designed to track and manage prod
 
 ```
 CheckMyWarranty/
-├── .github/
-│   └── workflows/
-│       └── deploy.yml            # GitHub Actions CI/CD deployment pipeline
-│
+├── .github/workflows/    # GitHub Actions CI/CD pipeline
 ├── backend/
-│   ├── config/
-│   │   ├── redis.js              # Redis client connection configuration
-│   │   └── sse.js                # Server-Sent Events client registry & dispatcher
-│   ├── controller/
-│   │   ├── chat.js               # RAG chat controller — handles /api/chat
-│   │   ├── manageData.js         # Upload, delete, and cached fetch controllers
-│   │   └── user.js               # Auth, Refresh Tokens, and Password Reset (OTP)
-│   ├── grafana/
-│   │   └── provisioning/
-│   │       └── datasources/
-│   │           └── loki-datasource.yml # Auto-configured Grafana Loki datasource
-│   ├── middlewares/
-│   │   ├── auth.js               # Access Token & Bull Board Auth middlewares
-│   │   └── rateLimiter.js        # Redis-backed auth rate limiter (rate-limiter-flexible)
-│   ├── prisma/
-│   │   └── schema.prisma         # Prisma ORM Schema (includes document_chunks + vector)
-│   ├── queues/
-│   │   ├── documentQueue.js      # BullMQ queues: document-extraction & document-embedding
-│   │   └── reminderQueue.js      # BullMQ queue declaration for reminder jobs
-│   ├── routes/
-│   │   ├── chat.js               # RAG chat route (/api/chat)
-│   │   ├── manageData.js         # Document management & SSE endpoint (/api/data)
-│   │   └── user.js               # Auth & Password Reset routes (/api/user)
-│   ├── services/
-│   │   ├── auth.js               # Access/Refresh JWT sign & verify helpers
-│   │   ├── brevoEmailService.js  # Brevo email delivery service
-│   │   ├── chatService.js        # RAG pipeline: retrieve chunks → build context → Groq answer
-│   │   ├── documentChunkService.js # Text chunking + Cohere embedding + pgvector storage
-│   │   ├── embeddingService.js   # Cohere embed-v4.0 API wrapper (text & image embeddings)
-│   │   ├── extractWarranty.js    # Groq AI document extraction service
-│   │   ├── jobRecoveryService.js # Re-queues pending reminder jobs on server restart
-│   │   ├── otpService.js         # OTP generation & Redis verification helpers
-│   │   ├── reminderService.js    # Creates reminder records & schedules email jobs
-│   │   ├── s3Storage.js          # AWS S3 upload, delete, and pre-signed URL helpers
-│   │   ├── searchService.js      # pgvector cosine similarity search with per-doc windowing
-│   │   └── tokenService.js       # Token generation helpers
-│   ├── workers/
-│   │   ├── embeddingWorker.js    # BullMQ worker: Cohere embeddings → document_chunks table
-│   │   ├── extractionWorker.js   # BullMQ worker: Groq extraction → expiry date + reminders
-│   │   └── reminderWorker.js     # BullMQ worker: sends warranty reminder emails via Brevo
-│   ├── connection.js             # Prisma Client instance
-│   ├── docker-compose.yml        # Development environment Docker Compose
-│   ├── docker-compose.prod.yml   # Production environment Docker Compose
-│   ├── Dockerfile                # Production multi-stage Docker build file
-│   ├── index.js                  # Express app entry point
-│   ├── logger.js                 # Pino logger with pino-loki transport
-│   ├── package.json
-│   ├── .env                      # Local development environment variables
-│   └── .env.production           # Production environment variable template
-│
-├── frontend/                     # React 19 + Tailwind CSS frontend application
+│   ├── config/           # Redis client & SSE registry
+│   ├── controller/       # Route handlers (auth, data, RAG chat)
+│   ├── grafana/          # Grafana/Loki provisioning config
+│   ├── middlewares/      # JWT auth & Redis-backed rate limiter
+│   ├── migrations/       # Database migration files
+│   ├── prisma/           # Prisma schema (includes pgvector document_chunks)
+│   ├── queues/           # BullMQ queue definitions (reminder, extraction, embedding)
+│   ├── routes/           # Express routers (/api/user, /api/data, /api/chat)
+│   ├── services/         # Business logic (embedding, search, chat, extraction, email)
+│   ├── workers/          # BullMQ workers (reminder, extraction, embedding)
+│   ├── utils/            # Shared utilities
+│   ├── index.js          # Express app entry point
+│   ├── docker-compose.yml
+│   └── docker-compose.prod.yml
+├── frontend/             # React 19 + Tailwind CSS frontend
 └── README.md
 ```
 
