@@ -5,7 +5,7 @@ import { searchDocumentChunks } from "./searchService.js";
 
 const groq = new Groq({ apiKey: process.env.GROQ_API });
 
-const CHAT_MODEL = "llama-3.1-8b-instant";
+const CHAT_MODEL = process.env.GROQ_TEXT_MODEL || "llama-3.3-70b-versatile";
 
 /**
  * Group retrieved chunks by document and build a labeled context block.

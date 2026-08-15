@@ -43,7 +43,8 @@ Example output:
 // ─────────────────────────────────────────────────────────────────
 async function extractFromText(text) {
     const chat = await groq.chat.completions.create({
-        model: "llama-3.1-8b-instant",
+        model: process.env.GROQ_TEXT_MODEL || "llama-3.3-70b-versatile",
+        response_format: { type: "json_object" },
         messages: [
             { role: "system", content: EXTRACTION_PROMPT },
             {
@@ -86,7 +87,7 @@ async function extractFromScannedPDF(filePath) {
     const dataUrl = screenshots.pages[0].dataUrl;
 
     const chat = await groq.chat.completions.create({
-        model: "meta-llama/llama-4-scout-17b-16e-instruct",
+        model: process.env.GROQ_VISION_MODEL || "qwen/qwen3.6-27b",
         messages: [
             { role: "system", content: EXTRACTION_PROMPT },
             {
@@ -119,7 +120,7 @@ async function extractFromImage(filePath, mimeType) {
     const dataUrl = `data:${mimeType};base64,${base64File}`;
 
     const chat = await groq.chat.completions.create({
-        model: "meta-llama/llama-4-scout-17b-16e-instruct",
+        model: process.env.GROQ_VISION_MODEL || "qwen/qwen3.6-27b",
         messages: [
             { role: "system", content: EXTRACTION_PROMPT },
             {
@@ -150,11 +151,24 @@ function parseLLMResponse(raw) {
     if (!raw) return null;
 
     try {
-        // Strip possible markdown code-fences
-        let cleaned = raw.trim();
-        if (cleaned.startsWith("```")) {
-            cleaned = cleaned.replace(/^```(?:json)?\n?/, "").replace(/\n?```$/, "");
+        // Strip think blocks (common in reasoning models like qwen)
+        let cleaned = raw.replace(/<think>[\s\S]*?<\/think>/g, "").trim();
+
+        // Extract the JSON object boundaries
+        const startIdx = cleaned.indexOf("{");
+        const endIdx = cleaned.lastIndexOf("}");
+        if (startIdx !== -1 && endIdx !== -1) {
+            cleaned = cleaned.substring(startIdx, endIdx + 1);
         }
+
+        // Escape literal control characters (newlines, carriage returns, tabs) inside string values
+        cleaned = cleaned.replace(/"([^"\\]|\\.)*"/g, (match) => {
+            return match
+                .replace(/\n/g, "\\n")
+                .replace(/\r/g, "\\r")
+                .replace(/\t/g, "\\t");
+        });
+
         const parsed = JSON.parse(cleaned);
         return {
             purchase_date: parsed.purchase_date || null,
