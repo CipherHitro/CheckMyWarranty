@@ -99,18 +99,23 @@ nginx -t && systemctl reload nginx
 # ---------------------------------------------------------------------------
 # 7. TLS cert — restore from S3 backup if this isn't truly the first boot
 # ever (avoids burning Let's Encrypt's weekly issuance limit every time you
-# destroy/recreate the instance), otherwise issue a fresh one and store it.
+# destroy/recreate the instance), then always run certbot to ensure nginx
+# config matches the current certs.
 # ---------------------------------------------------------------------------
 if aws s3 cp "s3://$S3_BUCKET/infra-backup/letsencrypt.tar.gz" /tmp/letsencrypt.tar.gz --region "$AWS_REGION" 2>/dev/null; then
   echo "Restoring existing certificate from S3 backup"
   tar -xzf /tmp/letsencrypt.tar.gz -C /
-  nginx -t && systemctl reload nginx
 else
   echo "No backup found — issuing a fresh certificate (make sure DNS already points at this instance's Elastic IP)"
-  certbot --nginx -d "$DOMAIN" --non-interactive --agree-tos -m "$CERTBOT_EMAIL" --redirect
-  tar -czf /tmp/letsencrypt.tar.gz /etc/letsencrypt
-  aws s3 cp /tmp/letsencrypt.tar.gz "s3://$S3_BUCKET/infra-backup/letsencrypt.tar.gz" --region "$AWS_REGION"
 fi
+
+# certbot --nginx will detect existing valid certs and just configure/renew
+# the nginx HTTPS block; if no valid cert exists it issues a new one.
+certbot --nginx -d "$DOMAIN" --non-interactive --agree-tos -m "$CERTBOT_EMAIL" --redirect
+
+# Keep the S3 backup fresh
+tar -czf /tmp/letsencrypt.tar.gz /etc/letsencrypt
+aws s3 cp /tmp/letsencrypt.tar.gz "s3://$S3_BUCKET/infra-backup/letsencrypt.tar.gz" --region "$AWS_REGION"
 
 # Keep the S3 backup fresh after each automatic renewal too
 cat > /etc/letsencrypt/renewal-hooks/deploy/backup-to-s3.sh <<EOF
