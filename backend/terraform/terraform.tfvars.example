@@ -1,0 +1,35 @@
+# Copy this file to terraform.tfvars, fill in your real values, and NEVER
+# commit terraform.tfvars to git (it will contain secrets). Add it to
+# .gitignore alongside terraform.tfstate*.
+
+aws_region     = "us-east-1"
+instance_type  = "t3.small"
+key_pair_name  = "aws-keypair" # created manually in step 1
+
+# From your manually-created RDS instance (Connectivity & security tab)
+vpc_id                 = "vpc-xxxxxxxx"
+subnet_id               = "subnet-xxxxxxxx"
+rds_security_group_id  = "sg-xxxxxxxx"
+
+# From your manually-allocated Elastic IP
+elastic_ip_allocation_id = "eipalloc-xxxxxxxx"
+
+# From your manually-created S3 bucket
+s3_bucket_name = "checkmywarranty-storage"
+
+github_repo_url = "https://github.com/CipherHitro/CheckMyWarranty.git"
+domain_name     = "checkmywarranty-backend.mentalorbit.tech"
+certbot_email   = "you@example.com"
+
+database_url = "postgresql://USERNAME:PASSWORD@YOUR-RDS-ENDPOINT.rds.amazonaws.com:5432/checkmywarranty"
+
+app_env_vars = {
+  secret               = "your_jwt_secret"
+  GROQ_API             = "your_groq_api_key"
+  COHERE_API_KEY       = "your_cohere_api_key"
+  BREVO_API            = "your_brevo_api_key"
+  BREVO_SENDER_EMAIL   = "noreply@yourdomain.com"
+  BREVO_SENDER_NAME    = "CheckMyWarranty"
+  FRONTEND_URL         = "https://checkmywarranty.vercel.app"
+  REDIS_URL            = "redis://redis:6379"
+}
